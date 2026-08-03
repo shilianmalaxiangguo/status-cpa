@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f7f8f5">
+  <meta name="description" content="CPA Network Status">
+  <title>CPA Network Status</title>
+  <link rel="stylesheet" href="/assets/app.css?v=3">
+  <script src="/assets/app.js?v=3" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到状态内容</a>
+  <header class="site-header">
+    <div class="shell header-inner">
+      <a class="brand" href="/" aria-label="CPA Network Status 首页">
+        <span class="brand-mark" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </span>
+        <span>CPA Network Status</span>
+      </a>
+      <div class="header-actions">
+        <span class="last-updated" id="last-updated">等待数据</span>
+        <button class="icon-button" id="refresh-button" type="button" title="立即刷新" aria-label="立即刷新">
+          <span aria-hidden="true">&#8635;</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="shell main-content">
+    <section class="section-block protocol-section" aria-labelledby="protocol-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Transport</p>
+          <h1 id="protocol-heading">协议健康度</h1>
+        </div>
+        <div class="range-control" role="group" aria-label="历史时间范围">
+          <button type="button" class="range-button is-active" data-range="24h" aria-pressed="true">24 小时</button>
+          <button type="button" class="range-button" data-range="7d" aria-pressed="false">7 天</button>
+        </div>
+      </div>
+
+      <div class="protocol-list" id="protocol-list" aria-live="polite">
+        <article class="protocol-row" data-protocol="http2">
+          <div class="protocol-primary">
+            <div class="protocol-badge protocol-http2" aria-hidden="true">H2</div>
+            <div>
+              <div class="protocol-title-line">
+                <h3>HTTP/2 / TCP</h3>
+                <span class="role-tag">生产传输</span>
+              </div>
+              <p class="protocol-description" id="http2-detail">等待 TCP/TLS 与 connector 数据</p>
+            </div>
+          </div>
+          <div class="protocol-metrics">
+            <div><span>握手延迟</span><strong id="http2-row-latency">--</strong></div>
+            <div><span id="http2-uptime-label">24h 可用率</span><strong id="http2-uptime">--</strong></div>
+          </div>
+          <div class="status-track" id="http2-track" role="img" aria-label="HTTP/2 历史状态"></div>
+          <div class="row-status status-unknown" id="http2-status"><span></span>未知</div>
+        </article>
+
+        <article class="protocol-row" data-protocol="quic">
+          <div class="protocol-primary">
+            <div class="protocol-badge protocol-quic" aria-hidden="true">Q</div>
+            <div>
+              <div class="protocol-title-line">
+                <h3>QUIC / UDP</h3>
+                <span class="role-tag role-standby">备用路径探针</span>
+              </div>
+              <p class="protocol-description" id="quic-detail">等待真实 QUIC/TLS 握手</p>
+            </div>
+          </div>
+          <div class="protocol-metrics">
+            <div><span>握手延迟</span><strong id="quic-row-latency">--</strong></div>
+            <div><span id="quic-uptime-label">24h 可用率</span><strong id="quic-uptime">--</strong></div>
+          </div>
+          <div class="status-track" id="quic-track" role="img" aria-label="QUIC 历史状态"></div>
+          <div class="row-status status-unknown" id="quic-status"><span></span>未知</div>
+        </article>
+      </div>
+      <div class="data-alert" id="data-stale" role="status" hidden>最新探测数据已过期，当前状态已标记为未知。</div>
+      <div class="track-legend" aria-label="状态图例">
+        <span><i class="legend-dot healthy"></i>正常</span>
+        <span><i class="legend-dot degraded"></i>降级</span>
+        <span><i class="legend-dot critical"></i>中断</span>
+        <span><i class="legend-dot unknown"></i>无数据</span>
+        <span class="legend-time"><span id="range-start">--</span><span>现在</span></span>
+      </div>
+    </section>
+
+    <section class="section-block" aria-labelledby="services-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Services</p>
+          <h2 id="services-heading">服务路径</h2>
+        </div>
+        <span class="section-note">本机源站与公网入口</span>
+      </div>
+      <div class="service-table" id="service-table" aria-live="polite">
+        <div class="service-loading">等待服务探测结果</div>
+      </div>
+    </section>
+
+    <section class="section-block incidents-section" aria-labelledby="incidents-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Incidents</p>
+          <h2 id="incidents-heading">最近异常</h2>
+        </div>
+        <span class="section-note" id="incident-count">0 条</span>
+      </div>
+      <div class="incidents-list" id="incidents-list">
+        <div class="empty-state">
+          <span class="empty-check" aria-hidden="true">&#10003;</span>
+          <p>当前时间范围内没有异常记录</p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="site-footer">
+      <span>status.longxiachaogu.com</span>
+      <label class="refresh-toggle">
+        <input type="checkbox" id="auto-refresh" checked>
+        <span aria-hidden="true"></span>
+        <span>自动刷新</span>
+      </label>
+    </footer>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

@@ -1,0 +1,28 @@
+[Unit]
+Description=CPA Network Status
+After=network-online.target cloudflared.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=status-cpa
+Group=status-cpa
+ExecStart=/opt/status-cpa/status-cpa -listen 0.0.0.0:19090 -data /var/lib/status-cpa/history.jsonl -interval 60s -retention 168h
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/status-cpa
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target
