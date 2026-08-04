@@ -60,14 +60,14 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
-	timelineEnd := now.Truncate(time.Minute).Add(time.Minute)
-	cutoff := timelineEnd.Add(-statusWindow)
 	snapshots := s.store.Since(time.Time{})
 	var current model.Snapshot
 	ok := len(snapshots) > 0
 	if ok {
 		current = snapshots[len(snapshots)-1]
 	}
+	timelineEnd := timelineEndFor(now, current.Timestamp, ok)
+	cutoff := timelineEnd.Add(-statusWindow)
 	stale := !ok || now.Sub(current.Timestamp) > s.staleAfter
 	if !ok {
 		current = model.Snapshot{
@@ -99,6 +99,14 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if err := encoder.Encode(response); err != nil {
 		http.Error(w, "encode response", http.StatusInternalServerError)
 	}
+}
+
+func timelineEndFor(now, latest time.Time, hasSnapshot bool) time.Time {
+	anchor := now
+	if hasSnapshot && !latest.IsZero() {
+		anchor = latest
+	}
+	return anchor.UTC().Truncate(time.Minute).Add(time.Minute)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

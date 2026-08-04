@@ -125,6 +125,36 @@ func TestAggregateTimelinePreservesWorstProtocolStateAndFullRange(t *testing.T) 
 	}
 }
 
+func TestTimelineEndFollowsLatestSnapshotAcrossMinuteBoundary(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 4, 10, 1, 5, 0, time.UTC)
+	latest := time.Date(2026, 8, 4, 10, 0, 15, 0, time.UTC)
+	end := timelineEndFor(now, latest, true)
+	if want := time.Date(2026, 8, 4, 10, 1, 0, 0, time.UTC); !end.Equal(want) {
+		t.Fatalf("expected timeline to end after the latest snapshot minute at %s, got %s", want, end)
+	}
+
+	timeline := aggregateTimeline([]model.Snapshot{{
+		Timestamp: latest,
+		Overall:   model.Healthy,
+		Connector: model.Connector{Status: model.Healthy},
+	}}, end.Add(-statusWindow), end, statusBuckets)
+	if got := timeline[len(timeline)-1].Connector.Status; got != model.Healthy {
+		t.Fatalf("expected latest snapshot in the rightmost bucket, got %s", got)
+	}
+}
+
+func TestTimelineEndUsesCurrentMinuteBeforeFirstSnapshot(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 4, 10, 1, 5, 0, time.FixedZone("CST", 8*60*60))
+	end := timelineEndFor(now, time.Time{}, false)
+	if want := time.Date(2026, 8, 4, 2, 2, 0, 0, time.UTC); !end.Equal(want) {
+		t.Fatalf("expected empty timeline to follow the current minute at %s, got %s", want, end)
+	}
+}
+
 func TestAggregateTimelineUsesHalfOpenWindow(t *testing.T) {
 	t.Parallel()
 

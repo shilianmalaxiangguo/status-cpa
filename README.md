@@ -54,7 +54,7 @@ http://127.0.0.1:19090/?demo=critical
 
 ```bash
 mkdir -p bin
-VERSION="${VERSION:?set VERSION, for example v0.3.1}"
+VERSION="${VERSION:?set VERSION, for example v0.3.2}"
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o bin/status-cpa-linux-amd64 ./cmd/status-cpa
 strings bin/status-cpa-linux-amd64 | grep -F -- "${VERSION}"
