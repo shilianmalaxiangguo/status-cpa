@@ -34,10 +34,12 @@ type Snapshot struct {
 }
 
 type Connector struct {
-	Protocol    string `json:"protocol"`
-	Connections int    `json:"connections"`
-	Status      Status `json:"status"`
-	Detail      string `json:"detail"`
+	Mode             string            `json:"mode"`
+	Protocol         string            `json:"protocol"`
+	ProtocolStatuses map[string]Status `json:"protocolStatuses,omitempty"`
+	Connections      int               `json:"connections"`
+	Status           Status            `json:"status"`
+	Detail           string            `json:"detail"`
 }
 
 type Incident struct {
@@ -53,6 +55,7 @@ type Incident struct {
 
 type APIResponse struct {
 	GeneratedAt time.Time  `json:"generatedAt"`
+	HasSnapshot bool       `json:"hasSnapshot"`
 	Current     Snapshot   `json:"current"`
 	History     []Snapshot `json:"history"`
 	Incidents   []Incident `json:"incidents"`

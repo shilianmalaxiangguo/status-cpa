@@ -1,23 +1,31 @@
 # CPA Network Status
 
 `status-cpa` is a small, self-contained status service for a Cloudflare Tunnel
-connector. It keeps production traffic on HTTP/2 while independently checking
-whether the same host can complete a real QUIC handshake to Cloudflare's edge.
+connector. It reports cloudflared's configured transport mode and active
+protocol while independently checking both HTTP/2 and QUIC paths to the edge.
 
-The UI opens directly on HTTP/2 and QUIC health. Each protocol shows its current
-state, current handshake latency, selected-range availability, and history.
-Service paths and recent incidents follow below. It does not require Node.js,
-Python, a database server, or a package manager on the target host.
+The UI opens directly on HTTP/2 and QUIC health, followed by upstream model
+health for AI INPUT, PIPIO, KRILL, and OPENAI. Each row shows its current state,
+available latency signal, and one-minute history for the latest 60 minutes. Service
+paths and recent incidents follow below. It does not require Node.js, Python, a
+database server, or a package manager on the target host.
 
 ## What it measures
 
 - Production connector health from the local `cloudflared` Prometheus endpoint.
+- Configured transport mode and active connector protocol from cloudflared's
+  local diagnostic endpoints.
 - HTTP/2 path health using TCP + TLS to Cloudflare Tunnel port `7844`.
 - QUIC path health using a real TLS/QUIC handshake with Cloudflare's dedicated
   probe SNI (`probe.cftunnel.com`) and ALPN (`argotunnel`). The connection is
   closed immediately; no stream is opened and no Tunnel connector is registered.
 - Local CPA (`8317`) and CPA Manager Plus (`18317`) endpoints.
 - Public API and panel routes without following redirects.
+- Exact `gpt-5.6-sol` status published by AI INPUT, PIPIO, and KRILL. Missing,
+  stale, ambiguous, or unreadable model data is reported as unknown.
+- OpenAI's official `Codex API` component. OpenAI does not publish a
+  `gpt-5.6-sol` component, so this row is explicitly labeled as aggregate and
+  does not claim model-level latency.
 
 The QUIC check follows the probe behavior added to cloudflared 2026.7.x. A UDP
 socket or `nc -u` alone is not treated as success.
@@ -46,8 +54,10 @@ http://127.0.0.1:19090/?demo=critical
 
 ```bash
 mkdir -p bin
+VERSION="${VERSION:?set VERSION, for example v0.3.1}"
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-  go build -trimpath -ldflags='-s -w' -o bin/status-cpa-linux-amd64 ./cmd/status-cpa
+  go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o bin/status-cpa-linux-amd64 ./cmd/status-cpa
+strings bin/status-cpa-linux-amd64 | grep -F -- "${VERSION}"
 sha256sum bin/status-cpa-linux-amd64
 ```
 
@@ -95,6 +105,8 @@ All settings have flags and matching environment variables:
 - **Critical**: the production connector or both public service paths fail.
 - **Unknown**: the check has not completed or its source cannot be read.
 
-The global state treats QUIC failure as degraded while production remains on
-HTTP/2. That distinction prevents the status page from calling the whole API
-down merely because the unused QUIC path is unavailable.
+The global state treats an independent edge-path failure as degraded while the
+production connector remains online. That distinction prevents the status page
+from calling the whole API down merely because an unused fallback path is
+unavailable. External model-provider rows are tracked independently and do not
+change the Tunnel's global network state.

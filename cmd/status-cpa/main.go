@@ -59,6 +59,12 @@ func run() error {
 			{ID: "public-api", Name: "API 公网入口", URL: "https://api.longxiachaogu.com/", ExpectedStatus: []int{http.StatusOK}, Protocol: "http2"},
 			{ID: "public-panel", Name: "面板公网入口", URL: "https://cpa.longxiachaogu.com/management.html", ExpectedStatus: []int{http.StatusFound}, Protocol: "http2"},
 		},
+		ModelSources: []probe.ModelSource{
+			{ID: "provider-ai-input", Name: "AI INPUT", URL: "https://status.input.im/api/status", Kind: probe.ModelSourceAIInput},
+			{ID: "provider-pipio", Name: "PIPIO", URL: "https://pipio.io/api/uptime/status", Kind: probe.ModelSourcePIPIO},
+			{ID: "provider-krill", Name: "KRILL", URL: "https://www.krill-ai.net/api/public/channel-status?hours=24", Kind: probe.ModelSourceKrill},
+			{ID: "provider-openai", Name: "OPENAI", URL: "https://status.openai.com/api/v2/components.json", Kind: probe.ModelSourceOpenAI},
+		},
 	})
 
 	rootCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

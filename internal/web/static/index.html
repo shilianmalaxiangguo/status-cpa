@@ -7,8 +7,8 @@
   <meta name="theme-color" content="#f7f8f5">
   <meta name="description" content="CPA Network Status">
   <title>CPA Network Status</title>
-  <link rel="stylesheet" href="/assets/app.css?v=4">
-  <script src="/assets/app.js?v=3" defer></script>
+  <link rel="stylesheet" href="/assets/app.css?v=12">
+  <script src="/assets/app.js?v=12" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">跳到状态内容</a>
@@ -32,50 +32,52 @@
   <main id="main" class="shell main-content">
     <section class="section-block protocol-section" aria-labelledby="protocol-heading">
       <div class="section-heading">
-        <div>
+        <div class="protocol-heading-copy">
           <p class="eyebrow">Transport</p>
-          <h1 id="protocol-heading">协议健康度</h1>
-        </div>
-        <div class="range-control" role="group" aria-label="历史时间范围">
-          <button type="button" class="range-button is-active" data-range="24h" aria-pressed="true">24 小时</button>
-          <button type="button" class="range-button" data-range="7d" aria-pressed="false">7 天</button>
+          <div class="protocol-heading-title">
+            <h1 id="protocol-heading">协议健康度</h1>
+            <span class="tunnel-state status-unknown" id="tunnel-state" role="status" aria-live="polite" aria-atomic="true">
+              <span class="tunnel-state-dot" aria-hidden="true"></span>
+              <span id="tunnel-state-label">当前隧道 · 等待数据</span>
+            </span>
+          </div>
         </div>
       </div>
 
       <div class="protocol-list" id="protocol-list" aria-live="polite">
-        <article class="protocol-row" data-protocol="http2">
+        <article class="protocol-row" id="http2-row" data-protocol="http2">
           <div class="protocol-primary">
             <div class="protocol-badge protocol-http2" aria-hidden="true">H2</div>
             <div>
               <div class="protocol-title-line">
                 <h3>HTTP/2 / TCP</h3>
-                <span class="role-tag">生产传输</span>
+                <span class="role-tag role-unknown" id="http2-role">等待协议识别</span>
               </div>
               <p class="protocol-description" id="http2-detail">等待 TCP/TLS 与 connector 数据</p>
             </div>
           </div>
           <div class="protocol-metrics">
             <div><span>握手延迟</span><strong id="http2-row-latency">--</strong></div>
-            <div><span id="http2-uptime-label">24h 可用率</span><strong id="http2-uptime">--</strong></div>
+            <div><span>近 60 分钟可用率</span><strong id="http2-uptime">--</strong></div>
           </div>
           <div class="status-track" id="http2-track" role="img" aria-label="HTTP/2 历史状态"></div>
           <div class="row-status status-unknown" id="http2-status"><span></span>未知</div>
         </article>
 
-        <article class="protocol-row" data-protocol="quic">
+        <article class="protocol-row" id="quic-row" data-protocol="quic">
           <div class="protocol-primary">
             <div class="protocol-badge protocol-quic" aria-hidden="true">Q</div>
             <div>
               <div class="protocol-title-line">
                 <h3>QUIC / UDP</h3>
-                <span class="role-tag role-standby">备用路径探针</span>
+                <span class="role-tag role-unknown" id="quic-role">等待协议识别</span>
               </div>
               <p class="protocol-description" id="quic-detail">等待真实 QUIC/TLS 握手</p>
             </div>
           </div>
           <div class="protocol-metrics">
             <div><span>握手延迟</span><strong id="quic-row-latency">--</strong></div>
-            <div><span id="quic-uptime-label">24h 可用率</span><strong id="quic-uptime">--</strong></div>
+            <div><span>近 60 分钟可用率</span><strong id="quic-uptime">--</strong></div>
           </div>
           <div class="status-track" id="quic-track" role="img" aria-label="QUIC 历史状态"></div>
           <div class="row-status status-unknown" id="quic-status"><span></span>未知</div>
@@ -87,7 +89,103 @@
         <span><i class="legend-dot degraded"></i>降级</span>
         <span><i class="legend-dot critical"></i>中断</span>
         <span><i class="legend-dot unknown"></i>无数据</span>
-        <span class="legend-time"><span id="range-start">--</span><span>现在</span></span>
+        <span class="legend-time"><span>60 分钟前</span><span>现在</span></span>
+      </div>
+    </section>
+
+    <section class="section-block protocol-section" aria-labelledby="providers-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Providers</p>
+          <h2 id="providers-heading">上游健康度</h2>
+        </div>
+        <span class="section-note">评判模型 · gpt-5.6-sol</span>
+        <span class="sr-only" id="provider-live-status" role="status" aria-live="polite" aria-atomic="true"></span>
+      </div>
+
+      <div class="protocol-list" id="provider-list">
+        <article class="protocol-row" id="provider-ai-input-row" data-provider="provider-ai-input">
+          <div class="protocol-primary">
+            <div class="protocol-badge provider-ai-input" aria-hidden="true">AI</div>
+            <div>
+              <div class="protocol-title-line">
+                <h3>AI INPUT</h3>
+                <span class="role-tag">gpt-5.6-sol</span>
+              </div>
+              <p class="protocol-description" id="provider-ai-input-detail">等待模型状态源</p>
+            </div>
+          </div>
+          <div class="protocol-metrics">
+            <div><span>最近探测延迟</span><strong id="provider-ai-input-latency">--</strong></div>
+            <div><span>近 60 分钟可用率</span><strong id="provider-ai-input-uptime">--</strong></div>
+          </div>
+          <div class="status-track" id="provider-ai-input-track" role="img" aria-label="AI INPUT 历史状态"></div>
+          <div class="row-status status-unknown" id="provider-ai-input-status"><span></span>未知</div>
+        </article>
+
+        <article class="protocol-row" id="provider-pipio-row" data-provider="provider-pipio">
+          <div class="protocol-primary">
+            <div class="protocol-badge provider-pipio" aria-hidden="true">PI</div>
+            <div>
+              <div class="protocol-title-line">
+                <h3>PIPIO</h3>
+                <span class="role-tag">gpt-5.6-sol</span>
+              </div>
+              <p class="protocol-description" id="provider-pipio-detail">等待模型状态源</p>
+            </div>
+          </div>
+          <div class="protocol-metrics">
+            <div><span>模型延迟</span><strong id="provider-pipio-latency">--</strong></div>
+            <div><span>近 60 分钟可用率</span><strong id="provider-pipio-uptime">--</strong></div>
+          </div>
+          <div class="status-track" id="provider-pipio-track" role="img" aria-label="PIPIO 历史状态"></div>
+          <div class="row-status status-unknown" id="provider-pipio-status"><span></span>未知</div>
+        </article>
+
+        <article class="protocol-row" id="provider-krill-row" data-provider="provider-krill">
+          <div class="protocol-primary">
+            <div class="protocol-badge provider-krill" aria-hidden="true">KR</div>
+            <div>
+              <div class="protocol-title-line">
+                <h3>KRILL</h3>
+                <span class="role-tag">gpt-5.6-sol</span>
+              </div>
+              <p class="protocol-description" id="provider-krill-detail">等待模型状态源</p>
+            </div>
+          </div>
+          <div class="protocol-metrics">
+            <div><span>TTFT P99</span><strong id="provider-krill-latency">--</strong></div>
+            <div><span>近 60 分钟可用率</span><strong id="provider-krill-uptime">--</strong></div>
+          </div>
+          <div class="status-track" id="provider-krill-track" role="img" aria-label="KRILL 历史状态"></div>
+          <div class="row-status status-unknown" id="provider-krill-status"><span></span>未知</div>
+        </article>
+
+        <article class="protocol-row" id="provider-openai-row" data-provider="provider-openai">
+          <div class="protocol-primary">
+            <div class="protocol-badge provider-openai" aria-hidden="true">OA</div>
+            <div>
+              <div class="protocol-title-line">
+                <h3>OPENAI</h3>
+                <span class="role-tag role-unknown">Codex API 聚合</span>
+              </div>
+              <p class="protocol-description" id="provider-openai-detail">等待 OpenAI 官方状态</p>
+            </div>
+          </div>
+          <div class="protocol-metrics">
+            <div><span>模型延迟</span><strong id="provider-openai-latency">--</strong></div>
+            <div><span>近 60 分钟可用率</span><strong id="provider-openai-uptime">--</strong></div>
+          </div>
+          <div class="status-track" id="provider-openai-track" role="img" aria-label="OPENAI Codex API 历史状态"></div>
+          <div class="row-status status-unknown" id="provider-openai-status"><span></span>未知</div>
+        </article>
+      </div>
+      <div class="track-legend" aria-label="上游状态图例">
+        <span><i class="legend-dot healthy"></i>正常</span>
+        <span><i class="legend-dot degraded"></i>降级</span>
+        <span><i class="legend-dot critical"></i>中断</span>
+        <span><i class="legend-dot unknown"></i>无数据</span>
+        <span class="legend-time"><span>60 分钟前</span><span>现在</span></span>
       </div>
     </section>
 

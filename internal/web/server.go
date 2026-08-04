@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/shilianmalaxiangguo/status-cpa/internal/history"
@@ -17,6 +16,11 @@ import (
 
 //go:embed static/*
 var staticFiles embed.FS
+
+const (
+	statusWindow  = 60 * time.Minute
+	statusBuckets = 60
+)
 
 type Server struct {
 	store      *history.Store
@@ -56,28 +60,36 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
-	rangeName, duration := parseRange(r.URL.Query().Get("range"))
-	cutoff := now.Add(-duration)
-	snapshots := s.store.Since(cutoff)
-	current, ok := s.store.Latest()
+	timelineEnd := now.Truncate(time.Minute).Add(time.Minute)
+	cutoff := timelineEnd.Add(-statusWindow)
+	snapshots := s.store.Since(time.Time{})
+	var current model.Snapshot
+	ok := len(snapshots) > 0
+	if ok {
+		current = snapshots[len(snapshots)-1]
+	}
 	stale := !ok || now.Sub(current.Timestamp) > s.staleAfter
 	if !ok {
 		current = model.Snapshot{
 			Timestamp: now,
 			Overall:   model.Unknown,
 			Summary:   "等待第一次网络探测",
-			Connector: model.Connector{Protocol: "http2", Status: model.Unknown, Detail: "尚无数据"},
+			Connector: model.Connector{Mode: "unknown", Protocol: "unknown", Status: model.Unknown, Detail: "尚无数据"},
 		}
-	} else if stale {
-		current = staleSnapshot(current)
+	} else {
+		current = normalizeSnapshot(current)
+		if stale {
+			current = staleSnapshot(current)
+		}
 	}
-	incidents := filterIncidents(history.Incidents(s.store.Since(time.Time{})), cutoff)
+	incidents := filterIncidents(history.Incidents(snapshots), cutoff)
 	response := model.APIResponse{
 		GeneratedAt: now,
+		HasSnapshot: ok,
 		Current:     current,
-		History:     aggregateTimeline(snapshots, cutoff, now, 96),
+		History:     aggregateTimeline(snapshots, cutoff, timelineEnd, statusBuckets),
 		Incidents:   incidents,
-		Range:       rangeName,
+		Range:       "60m",
 		Stale:       stale,
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -101,15 +113,6 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	_, _ = fmt.Fprintf(w, `{"ok":%t,"hasSnapshot":%t}`+"\n", status == http.StatusOK, ok)
 }
 
-func parseRange(value string) (string, time.Duration) {
-	switch strings.ToLower(value) {
-	case "7d", "168h":
-		return "7d", 7 * 24 * time.Hour
-	default:
-		return "24h", 24 * time.Hour
-	}
-}
-
 func aggregateTimeline(snapshots []model.Snapshot, start, end time.Time, count int) []model.Snapshot {
 	if count <= 0 || !end.After(start) {
 		return nil
@@ -121,32 +124,66 @@ func aggregateTimeline(snapshots []model.Snapshot, start, end time.Time, count i
 		result[i] = model.Snapshot{
 			Timestamp: start.Add(time.Duration(i) * width),
 			Overall:   model.Unknown,
-			Connector: model.Connector{Protocol: "http2", Status: model.Unknown, Detail: "此时间段无探测数据"},
+			Connector: model.Connector{Mode: "unknown", Protocol: "unknown", Status: model.Unknown, Detail: "此时间段无探测数据"},
 		}
 	}
 	for _, snapshot := range snapshots {
-		if snapshot.Timestamp.Before(start) || snapshot.Timestamp.After(end) {
+		if snapshot.Timestamp.Before(start) || !snapshot.Timestamp.Before(end) {
 			continue
 		}
 		index := int(snapshot.Timestamp.Sub(start) / width)
 		if index >= count {
 			index = count - 1
 		}
+		normalized := normalizeSnapshot(snapshot)
 		if !populated[index] {
 			bucketTime := result[index].Timestamp
-			result[index] = cloneSnapshot(snapshot)
+			result[index] = normalized
 			result[index].Timestamp = bucketTime
 			populated[index] = true
 			continue
 		}
-		mergeWorst(&result[index], snapshot)
+		mergeWorst(&result[index], normalized)
 	}
 	return result
+}
+
+func normalizeSnapshot(snapshot model.Snapshot) model.Snapshot {
+	normalized := cloneSnapshot(snapshot)
+	normalized.Overall = normalizeStatus(normalized.Overall)
+	if normalized.Connector.Mode == "" {
+		normalized.Connector.Mode = "unknown"
+	}
+	if normalized.Connector.Protocol == "" {
+		normalized.Connector.Protocol = "unknown"
+	}
+	normalized.Connector.Status = normalizeStatus(normalized.Connector.Status)
+	for protocol, status := range normalized.Connector.ProtocolStatuses {
+		normalized.Connector.ProtocolStatuses[protocol] = normalizeStatus(status)
+	}
+	for i := range normalized.Checks {
+		normalized.Checks[i].Status = normalizeStatus(normalized.Checks[i].Status)
+	}
+	protocol := normalized.Connector.Protocol
+	if len(normalized.Connector.ProtocolStatuses) == 0 && (protocol == "http2" || protocol == "quic") {
+		normalized.Connector.ProtocolStatuses = map[string]model.Status{protocol: normalized.Connector.Status}
+	}
+	return normalized
+}
+
+func normalizeStatus(status model.Status) model.Status {
+	switch status {
+	case model.Healthy, model.Degraded, model.Critical, model.Unknown:
+		return status
+	default:
+		return model.Unknown
+	}
 }
 
 func cloneSnapshot(snapshot model.Snapshot) model.Snapshot {
 	cloned := snapshot
 	cloned.Checks = append([]model.Check(nil), snapshot.Checks...)
+	cloned.Connector.ProtocolStatuses = cloneProtocolStatuses(snapshot.Connector.ProtocolStatuses)
 	return cloned
 }
 
@@ -155,9 +192,20 @@ func mergeWorst(bucket *model.Snapshot, candidate model.Snapshot) {
 		bucket.Overall = candidate.Overall
 		bucket.Summary = candidate.Summary
 	}
+	protocolStatuses := cloneProtocolStatuses(bucket.Connector.ProtocolStatuses)
+	for protocol, status := range candidate.Connector.ProtocolStatuses {
+		current, ok := protocolStatuses[protocol]
+		if !ok || model.Severity(status) >= model.Severity(current) {
+			if protocolStatuses == nil {
+				protocolStatuses = make(map[string]model.Status)
+			}
+			protocolStatuses[protocol] = status
+		}
+	}
 	if model.Severity(candidate.Connector.Status) >= model.Severity(bucket.Connector.Status) {
 		bucket.Connector = candidate.Connector
 	}
+	bucket.Connector.ProtocolStatuses = protocolStatuses
 	indices := make(map[string]int, len(bucket.Checks))
 	for i, check := range bucket.Checks {
 		indices[check.ID] = i
@@ -175,11 +223,25 @@ func mergeWorst(bucket *model.Snapshot, candidate model.Snapshot) {
 	}
 }
 
+func cloneProtocolStatuses(statuses map[string]model.Status) map[string]model.Status {
+	if statuses == nil {
+		return nil
+	}
+	cloned := make(map[string]model.Status, len(statuses))
+	for protocol, status := range statuses {
+		cloned[protocol] = status
+	}
+	return cloned
+}
+
 func staleSnapshot(snapshot model.Snapshot) model.Snapshot {
 	stale := cloneSnapshot(snapshot)
 	stale.Overall = model.Unknown
 	stale.Summary = "最新探测数据已过期"
 	stale.Connector.Status = model.Unknown
+	stale.Connector.Mode = "unknown"
+	stale.Connector.Protocol = "unknown"
+	stale.Connector.ProtocolStatuses = nil
 	stale.Connector.Connections = 0
 	stale.Connector.Detail = "最新 connector 数据已过期"
 	for i := range stale.Checks {

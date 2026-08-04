@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,9 +24,12 @@ import (
 )
 
 const (
-	probeServerName = "probe.cftunnel.com"
-	quicALPN        = "argotunnel"
-	edgePort        = 7844
+	probeServerName       = "probe.cftunnel.com"
+	quicALPN              = "argotunnel"
+	edgePort              = 7844
+	configurationDiagPath = "/diag/configuration"
+	tunnelDiagPath        = "/diag/tunnel"
+	maxDiagnosticBody     = 1 << 20
 )
 
 var edgeHosts = []string{
@@ -33,9 +38,10 @@ var edgeHosts = []string{
 }
 
 type Config struct {
-	MetricsURL string
-	Endpoints  []Endpoint
-	Timeout    time.Duration
+	MetricsURL   string
+	Endpoints    []Endpoint
+	ModelSources []ModelSource
+	Timeout      time.Duration
 }
 
 type Endpoint struct {
@@ -81,6 +87,7 @@ func (c *Collector) Collect(ctx context.Context, now time.Time, next time.Time) 
 	quicCh := make(chan model.Check, 1)
 	http2Ch := make(chan model.Check, 1)
 	endpointCh := make(chan model.Check, len(c.config.Endpoints))
+	modelSourceCh := make(chan model.Check, len(c.config.ModelSources))
 
 	go func() { connectorCh <- c.collectConnector(ctx) }()
 	go func() { quicCh <- c.probeQUIC(ctx) }()
@@ -89,14 +96,28 @@ func (c *Collector) Collect(ctx context.Context, now time.Time, next time.Time) 
 		endpoint := endpoint
 		go func() { endpointCh <- c.probeEndpoint(ctx, endpoint) }()
 	}
-
-	connector := <-connectorCh
-	checks := []model.Check{<-http2Ch, <-quicCh}
-	for range c.config.Endpoints {
-		checks = append(checks, <-endpointCh)
+	for _, source := range c.config.ModelSources {
+		source := source
+		go func() { modelSourceCh <- c.probeModelSource(ctx, source, now) }()
 	}
 
-	overall, summary := overallStatus(connector, checks)
+	connector := <-connectorCh
+	networkChecks := []model.Check{<-http2Ch, <-quicCh}
+	for range c.config.Endpoints {
+		networkChecks = append(networkChecks, <-endpointCh)
+	}
+	modelSourceChecks := make([]model.Check, 0, len(c.config.ModelSources))
+	for range c.config.ModelSources {
+		modelSourceChecks = append(modelSourceChecks, <-modelSourceCh)
+	}
+	return buildSnapshot(now, next, connector, networkChecks, modelSourceChecks)
+}
+
+func buildSnapshot(now, next time.Time, connector model.Connector, networkChecks, modelSourceChecks []model.Check) model.Snapshot {
+	overall, summary := overallStatus(connector, networkChecks)
+	checks := make([]model.Check, 0, len(networkChecks)+len(modelSourceChecks))
+	checks = append(checks, networkChecks...)
+	checks = append(checks, modelSourceChecks...)
 	return model.Snapshot{
 		Timestamp:   now.UTC(),
 		Overall:     overall,
@@ -108,8 +129,33 @@ func (c *Collector) Collect(ctx context.Context, now time.Time, next time.Time) 
 }
 
 func (c *Collector) collectConnector(ctx context.Context) model.Connector {
+	modeCh := make(chan string, 1)
+	protocolCh := make(chan string, 1)
+	go func() { modeCh <- c.collectConfiguredMode(ctx) }()
+	go func() { protocolCh <- c.collectActiveProtocol(ctx) }()
+
+	connector := c.collectConnectorMetrics(ctx)
+	connector.Mode = <-modeCh
+	connector.Protocol = <-protocolCh
+	statusProtocol := connector.Protocol
+	if statusProtocol == "unknown" && (connector.Mode == "http2" || connector.Mode == "quic") {
+		statusProtocol = connector.Mode
+	}
+	if statusProtocol == "http2" || statusProtocol == "quic" {
+		connector.ProtocolStatuses = map[string]model.Status{statusProtocol: connector.Status}
+	}
+	if connector.Status == model.Healthy {
+		if protocol := protocolDisplayName(connector.Protocol); protocol != "" {
+			connector.Detail = fmt.Sprintf("%d 条生产 %s connector 在线", connector.Connections, protocol)
+		}
+	}
+	return connector
+}
+
+func (c *Collector) collectConnectorMetrics(ctx context.Context) model.Connector {
 	connector := model.Connector{
-		Protocol: "http2",
+		Mode:     "unknown",
+		Protocol: "unknown",
 		Status:   model.Unknown,
 		Detail:   "尚未读取 cloudflared 指标",
 	}
@@ -137,7 +183,7 @@ func (c *Collector) collectConnector(ctx context.Context) model.Connector {
 	switch {
 	case connector.Connections >= 4:
 		connector.Status = model.Healthy
-		connector.Detail = "4 条生产 HTTP/2 connector 在线"
+		connector.Detail = fmt.Sprintf("%d 条生产 connector 在线", connector.Connections)
 	case connector.Connections > 0:
 		connector.Status = model.Degraded
 		connector.Detail = fmt.Sprintf("仅 %d 条生产 connector 在线", connector.Connections)
@@ -146,6 +192,121 @@ func (c *Collector) collectConnector(ctx context.Context) model.Connector {
 		connector.Detail = "没有生产 connector 在线"
 	}
 	return connector
+}
+
+func (c *Collector) collectConfiguredMode(ctx context.Context) string {
+	payload := struct {
+		Protocol string `json:"protocol"`
+	}{}
+	if !c.collectDiagnostic(ctx, configurationDiagPath, &payload) {
+		return "unknown"
+	}
+	if strings.TrimSpace(payload.Protocol) == "" {
+		return "auto"
+	}
+	return normalizeConfiguredMode(payload.Protocol)
+}
+
+func (c *Collector) collectActiveProtocol(ctx context.Context) string {
+	payload := struct {
+		Connections []struct {
+			Connected bool   `json:"isConnected"`
+			Protocol  *int64 `json:"protocol"`
+		} `json:"connections"`
+	}{}
+	if !c.collectDiagnostic(ctx, tunnelDiagPath, &payload) {
+		return "unknown"
+	}
+
+	active := ""
+	for _, connection := range payload.Connections {
+		if !connection.Connected {
+			continue
+		}
+		protocol := diagnosticProtocol(connection.Protocol)
+		if protocol == "unknown" || active != "" && active != protocol {
+			return "unknown"
+		}
+		active = protocol
+	}
+	if active == "" {
+		return "unknown"
+	}
+	return active
+}
+
+func (c *Collector) collectDiagnostic(ctx context.Context, path string, target any) bool {
+	endpoint, err := diagnosticURL(c.config.MetricsURL, path)
+	if err != nil {
+		return false
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxDiagnosticBody+1))
+	if err != nil || len(body) > maxDiagnosticBody {
+		return false
+	}
+	return json.Unmarshal(body, target) == nil
+}
+
+func diagnosticURL(metricsURL, path string) (string, error) {
+	parsed, err := url.Parse(metricsURL)
+	if err != nil {
+		return "", err
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return "", errors.New("metrics URL must include scheme and host")
+	}
+	parsed.Path = path
+	parsed.RawPath = ""
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String(), nil
+}
+
+func normalizeConfiguredMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "auto":
+		return "auto"
+	case "quic":
+		return "quic"
+	case "http2", "h2mux":
+		return "http2"
+	default:
+		return "unknown"
+	}
+}
+
+func diagnosticProtocol(value *int64) string {
+	// HTTP/2 is enum zero in cloudflared and is omitted from diagnostic JSON.
+	if value == nil || *value == 0 {
+		return "http2"
+	}
+	if *value == 1 {
+		return "quic"
+	}
+	return "unknown"
+}
+
+func protocolDisplayName(protocol string) string {
+	switch protocol {
+	case "http2":
+		return "HTTP/2"
+	case "quic":
+		return "QUIC"
+	default:
+		return ""
+	}
 }
 
 func parseMetric(r io.Reader, name string) (float64, bool) {
@@ -369,7 +530,14 @@ func overallStatus(connector model.Connector, checks []model.Check) (model.Statu
 	if criticalPublicEndpoints == 1 || degraded {
 		return model.Degraded, "生产服务可用，但检测到网络路径降级"
 	}
-	return model.Healthy, "HTTP/2 生产链路与 QUIC 备用路径均正常"
+	switch connector.Protocol {
+	case "quic":
+		return model.Healthy, "QUIC 生产 Tunnel 与 HTTP/2 备用路径均正常"
+	case "http2":
+		return model.Healthy, "HTTP/2 生产 Tunnel 与 QUIC 备用路径均正常"
+	default:
+		return model.Healthy, "生产 Tunnel 与两条边缘路径均正常"
+	}
 }
 
 func containsInt(values []int, wanted int) bool {
