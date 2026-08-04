@@ -1,14 +1,14 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
-  <meta name="theme-color" content="#f7f8f5">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0d100e">
   <meta name="description" content="CPA Network Status">
   <title>CPA Network Status</title>
-  <link rel="stylesheet" href="/assets/app.css?v=12">
-  <script src="/assets/app.js?v=12" defer></script>
+  <link rel="stylesheet" href="/assets/app.css?v=15">
+  <script src="/assets/app.js?v=15" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">跳到状态内容</a>
@@ -22,6 +22,9 @@
       </a>
       <div class="header-actions">
         <span class="last-updated" id="last-updated">等待数据</span>
+        <button class="icon-button theme-toggle" id="theme-toggle" type="button" title="切换到浅色主题" aria-label="深色主题" aria-pressed="true">
+          <span id="theme-icon" aria-hidden="true">&#9788;</span>
+        </button>
         <button class="icon-button" id="refresh-button" type="button" title="立即刷新" aria-label="立即刷新">
           <span aria-hidden="true">&#8635;</span>
         </button>
@@ -44,7 +47,7 @@
         </div>
       </div>
 
-      <div class="protocol-list" id="protocol-list" aria-live="polite">
+      <div class="protocol-list" id="protocol-list">
         <article class="protocol-row" id="http2-row" data-protocol="http2">
           <div class="protocol-primary">
             <div class="protocol-badge protocol-http2" aria-hidden="true">H2</div>
@@ -60,7 +63,7 @@
             <div><span>握手延迟</span><strong id="http2-row-latency">--</strong></div>
             <div><span>近 60 分钟可用率</span><strong id="http2-uptime">--</strong></div>
           </div>
-          <div class="status-track" id="http2-track" role="img" aria-label="HTTP/2 历史状态"></div>
+          <div class="status-track" id="http2-track" role="slider" tabindex="0" aria-label="HTTP/2 历史状态" aria-orientation="horizontal" aria-valuemin="1" aria-valuemax="60" aria-valuenow="60" aria-valuetext="等待历史数据"></div>
           <div class="row-status status-unknown" id="http2-status"><span></span>未知</div>
         </article>
 
@@ -79,7 +82,7 @@
             <div><span>握手延迟</span><strong id="quic-row-latency">--</strong></div>
             <div><span>近 60 分钟可用率</span><strong id="quic-uptime">--</strong></div>
           </div>
-          <div class="status-track" id="quic-track" role="img" aria-label="QUIC 历史状态"></div>
+          <div class="status-track" id="quic-track" role="slider" tabindex="0" aria-label="QUIC 历史状态" aria-orientation="horizontal" aria-valuemin="1" aria-valuemax="60" aria-valuenow="60" aria-valuetext="等待历史数据"></div>
           <div class="row-status status-unknown" id="quic-status"><span></span>未知</div>
         </article>
       </div>
@@ -119,7 +122,7 @@
             <div><span>最近探测延迟</span><strong id="provider-ai-input-latency">--</strong></div>
             <div><span>近 60 分钟可用率</span><strong id="provider-ai-input-uptime">--</strong></div>
           </div>
-          <div class="status-track" id="provider-ai-input-track" role="img" aria-label="AI INPUT 历史状态"></div>
+          <div class="status-track" id="provider-ai-input-track" role="slider" tabindex="0" aria-label="AI INPUT 历史状态" aria-orientation="horizontal" aria-valuemin="1" aria-valuemax="60" aria-valuenow="60" aria-valuetext="等待历史数据"></div>
           <div class="row-status status-unknown" id="provider-ai-input-status"><span></span>未知</div>
         </article>
 
@@ -138,7 +141,7 @@
             <div><span>模型延迟</span><strong id="provider-pipio-latency">--</strong></div>
             <div><span>近 60 分钟可用率</span><strong id="provider-pipio-uptime">--</strong></div>
           </div>
-          <div class="status-track" id="provider-pipio-track" role="img" aria-label="PIPIO 历史状态"></div>
+          <div class="status-track" id="provider-pipio-track" role="slider" tabindex="0" aria-label="PIPIO 历史状态" aria-orientation="horizontal" aria-valuemin="1" aria-valuemax="60" aria-valuenow="60" aria-valuetext="等待历史数据"></div>
           <div class="row-status status-unknown" id="provider-pipio-status"><span></span>未知</div>
         </article>
 
@@ -157,7 +160,7 @@
             <div><span>TTFT P99</span><strong id="provider-krill-latency">--</strong></div>
             <div><span>近 60 分钟可用率</span><strong id="provider-krill-uptime">--</strong></div>
           </div>
-          <div class="status-track" id="provider-krill-track" role="img" aria-label="KRILL 历史状态"></div>
+          <div class="status-track" id="provider-krill-track" role="slider" tabindex="0" aria-label="KRILL 历史状态" aria-orientation="horizontal" aria-valuemin="1" aria-valuemax="60" aria-valuenow="60" aria-valuetext="等待历史数据"></div>
           <div class="row-status status-unknown" id="provider-krill-status"><span></span>未知</div>
         </article>
 
@@ -176,7 +179,7 @@
             <div><span>模型延迟</span><strong id="provider-openai-latency">--</strong></div>
             <div><span>近 60 分钟可用率</span><strong id="provider-openai-uptime">--</strong></div>
           </div>
-          <div class="status-track" id="provider-openai-track" role="img" aria-label="OPENAI Codex API 历史状态"></div>
+          <div class="status-track" id="provider-openai-track" role="slider" tabindex="0" aria-label="OPENAI Codex API 历史状态" aria-orientation="horizontal" aria-valuemin="1" aria-valuemax="60" aria-valuenow="60" aria-valuetext="等待历史数据"></div>
           <div class="row-status status-unknown" id="provider-openai-status"><span></span>未知</div>
         </article>
       </div>
@@ -228,6 +231,20 @@
     </footer>
   </main>
 
+  <div class="track-tooltip" id="track-tooltip" role="tooltip" hidden>
+    <div class="track-tooltip-header">
+      <div>
+        <strong id="track-tooltip-label">历史状态</strong>
+        <time id="track-tooltip-time">--</time>
+      </div>
+      <span class="track-tooltip-state status-unknown" id="track-tooltip-state">未知</span>
+    </div>
+    <div class="track-tooltip-metric">
+      <span id="track-tooltip-metric-label">延迟</span>
+      <strong id="track-tooltip-metric-value">--</strong>
+    </div>
+    <p id="track-tooltip-detail">此分钟无探测数据</p>
+  </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>

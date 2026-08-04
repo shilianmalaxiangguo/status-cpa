@@ -72,7 +72,7 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	}
 
 	assetRecorder := httptest.NewRecorder()
-	assetRequest := httptest.NewRequest(http.MethodGet, "/assets/app.js?v=12", nil)
+	assetRequest := httptest.NewRequest(http.MethodGet, "/assets/app.js?v=15", nil)
 	server.Handler().ServeHTTP(assetRecorder, assetRequest)
 	if assetRecorder.Code != http.StatusOK {
 		t.Fatalf("expected asset response 200, got %d", assetRecorder.Code)
@@ -84,7 +84,7 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	indexRecorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(indexRecorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	index := indexRecorder.Body.String()
-	for _, expected := range []string{`id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `id="provider-openai-row"`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=12`, `/assets/app.js?v=12`} {
+	for _, expected := range []string{`data-theme="dark"`, `id="theme-toggle"`, `id="track-tooltip"`, `role="slider"`, `id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `id="provider-openai-row"`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=15`, `/assets/app.js?v=15`} {
 		if !strings.Contains(index, expected) {
 			t.Fatalf("expected index to contain %q", expected)
 		}
@@ -94,6 +94,9 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	}
 	if strings.Contains(index, `id="provider-list" aria-live=`) {
 		t.Fatal("expected provider timeline grid not to be a live region")
+	}
+	if strings.Contains(index, `id="protocol-list" aria-live=`) {
+		t.Fatal("expected protocol timeline grid not to be a live region")
 	}
 }
 

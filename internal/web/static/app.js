@@ -4,7 +4,12 @@
     controller: null,
     timer: null,
     data: null,
+    tracks: new Map(),
+    activeTrack: null,
+    tooltipHideTimer: null,
   };
+
+  const themeStorageKey = "status-cpa-theme";
 
   const labels = {
     healthy: "正常",
@@ -20,21 +25,61 @@
   };
 
   const providers = [
-    { id: "provider-ai-input", label: "AI INPUT" },
-    { id: "provider-pipio", label: "PIPIO", noLatency: "未提供" },
-    { id: "provider-krill", label: "KRILL" },
-    { id: "provider-openai", label: "OPENAI Codex API", noLatency: "不适用" },
+    { id: "provider-ai-input", label: "AI INPUT", latencyLabel: "最近探测延迟" },
+    { id: "provider-pipio", label: "PIPIO", latencyLabel: "模型延迟", noLatency: "未提供" },
+    { id: "provider-krill", label: "KRILL", latencyLabel: "TTFT P99" },
+    { id: "provider-openai", label: "OPENAI Codex API", latencyLabel: "模型延迟", noLatency: "不适用" },
   ];
 
   const demo = new URLSearchParams(window.location.search).get("demo");
 
   const $ = (id) => document.getElementById(id);
 
+  function readTheme() {
+    try {
+      const stored = window.localStorage.getItem(themeStorageKey);
+      return stored === "light" || stored === "dark" ? stored : "dark";
+    } catch (_) {
+      return "dark";
+    }
+  }
+
+  function applyTheme(theme, persist = false) {
+    const selected = theme === "light" ? "light" : "dark";
+    const isDark = selected === "dark";
+    document.documentElement.dataset.theme = selected;
+    $("theme-toggle").setAttribute("aria-pressed", String(isDark));
+    $("theme-toggle").title = `切换到${isDark ? "浅色" : "深色"}主题`;
+    $("theme-icon").textContent = isDark ? "☀" : "☾";
+    document.querySelector('meta[name="theme-color"]').content = isDark ? "#0d100e" : "#f7f8f5";
+    if (!persist) return;
+    try {
+      window.localStorage.setItem(themeStorageKey, selected);
+    } catch (_) {
+      // The selected theme still applies for this page when storage is unavailable.
+    }
+  }
+
   function formatTime(iso) {
     if (!iso) return "--";
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return "--";
     return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  function formatSnapshotTime(iso) {
+    if (!iso) return "时间未知";
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return "时间未知";
+    return date.toLocaleString("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
   }
 
   function formatLatency(value) {
@@ -55,8 +100,12 @@
     element.classList.add(statusClass(normalizeStatus(status)));
   }
 
+  function findCheck(checks, id) {
+    return (checks || []).find((check) => check.id === id);
+  }
+
   function currentCheck(checks, id) {
-    return (checks || []).find((check) => check.id === id) || {
+    return findCheck(checks, id) || {
       id,
       status: "unknown",
       detail: "尚无数据",
@@ -113,6 +162,62 @@
     if (!values.length) return "--";
     const good = values.filter((value) => value === "healthy").length;
     return `${((good / values.length) * 100).toFixed(2)}%`;
+  }
+
+  function missingPoint(label, snapshot, metricLabel) {
+    return {
+      label,
+      timestamp: snapshot && snapshot.timestamp,
+      status: "unknown",
+      metricLabel,
+      metricValue: "--",
+      detail: "此分钟无探测数据",
+    };
+  }
+
+  function protocolHistoryPoint(snapshot, id, label) {
+    if (!snapshot) return missingPoint(label, null, "握手延迟");
+    const connector = snapshot.connector || {};
+    const protocol = protocolKey(id);
+    const edgeCheck = findCheck(snapshot.checks, id);
+    const storedStatus = connector.protocolStatuses && connector.protocolStatuses[protocol];
+    const hasConnectorStatus = ["healthy", "degraded", "critical", "unknown"].includes(storedStatus);
+    const isProduction = productionConnectorProtocol(connector) === protocol;
+    const status = protocolStatus(snapshot, id);
+    const details = [];
+
+    if (isProduction && connector.detail) {
+      details.push(connector.detail);
+    } else if (hasConnectorStatus) {
+      details.push(`${label} connector ${labels[status]}；此分钟未保留详细原因`);
+    }
+    if (edgeCheck && edgeCheck.detail) {
+      details.push(`${hasConnectorStatus || isProduction ? "独立握手" : "握手"}：${edgeCheck.detail}`);
+    }
+
+    return {
+      label,
+      timestamp: snapshot.timestamp,
+      status,
+      metricLabel: "握手延迟",
+      metricValue: edgeCheck && edgeCheck.latencyMs ? `${formatLatency(edgeCheck.latencyMs)} ms` : "--",
+      detail: details.join("；") || "此分钟无探测数据",
+    };
+  }
+
+  function providerHistoryPoint(snapshot, provider) {
+    if (!snapshot) return missingPoint(provider.label, null, provider.latencyLabel);
+    const check = findCheck(snapshot.checks, provider.id);
+    if (!check) return missingPoint(provider.label, snapshot, provider.latencyLabel);
+    const status = normalizeStatus(check.status);
+    return {
+      label: provider.label,
+      timestamp: snapshot.timestamp,
+      status,
+      metricLabel: provider.latencyLabel,
+      metricValue: check.latencyMs ? `${formatLatency(check.latencyMs)} ms` : status !== "unknown" && provider.noLatency ? provider.noLatency : "--",
+      detail: check.detail || "该分钟未提供探测详情",
+    };
   }
 
   function renderTunnelState(connector) {
@@ -186,8 +291,8 @@
     const quicStatus = protocolStatus(snapshot, "quic-edge");
     renderRowStatus($("http2-status"), http2Status);
     renderRowStatus($("quic-status"), quicStatus);
-    renderTrack($("http2-track"), history, "http2-edge", http2Status);
-    renderTrack($("quic-track"), history, "quic-edge", quicStatus);
+    renderTrack($("http2-track"), history, "http2-edge");
+    renderTrack($("quic-track"), history, "quic-edge");
 
     renderProviders(snapshot, history);
 
@@ -206,7 +311,7 @@
       $(`${provider.id}-latency`).textContent = check.latencyMs ? `${formatLatency(check.latencyMs)} ms` : status !== "unknown" && provider.noLatency ? provider.noLatency : "--";
       $(`${provider.id}-uptime`).textContent = checkUptime(history, provider.id);
       renderRowStatus($(`${provider.id}-status`), status);
-      renderCheckTrack($(`${provider.id}-track`), history, provider.id, provider.label, status);
+      renderCheckTrack($(`${provider.id}-track`), history, provider);
       summary.push(`${provider.label} ${labels[status]}`);
     });
     const liveStatus = $("provider-live-status");
@@ -220,25 +325,248 @@
     element.innerHTML = `<span></span>${labels[status]}`;
   }
 
-  function renderTrack(element, history, id, currentStatus) {
+  function renderTrack(element, history, id) {
     const label = id === "quic-edge" ? "QUIC" : "HTTP/2";
-    renderHistoryTrack(element, history, currentStatus, label, (snapshot) => protocolStatus(snapshot, id));
+    renderHistoryTrack(element, history, label, (snapshot) => protocolHistoryPoint(snapshot, id, label));
   }
 
-  function renderCheckTrack(element, history, id, label, currentStatus) {
-    renderHistoryTrack(element, history, currentStatus, label, (snapshot) => checkStatus(snapshot, id));
+  function renderCheckTrack(element, history, provider) {
+    renderHistoryTrack(element, history, provider.label, (snapshot) => providerHistoryPoint(snapshot, provider));
   }
 
-  function renderHistoryTrack(element, history, currentStatus, label, statusFor) {
+  function renderHistoryTrack(element, history, label, pointFor) {
     const count = 60;
     const samples = (history || []).slice(-count);
+    const track = ensureTrack(element, label);
+    const previousPoint = track.points[track.selectedIndex];
+    const previousTimestamp = previousPoint && previousPoint.timestamp;
+    const wasActive = state.activeTrack === track;
+    const wasPinned = track.pinned;
+    const points = Array.from({ length: count - samples.length }, () => null).concat(samples).map(pointFor);
+    let selectedIndex = previousTimestamp
+      ? points.findIndex((point) => point.timestamp === previousTimestamp)
+      : previousPoint
+        ? Math.min(track.selectedIndex, points.length - 1)
+        : points.length - 1;
+    const selectionExpired = previousTimestamp && selectedIndex < 0;
+    if (selectedIndex < 0) selectedIndex = points.length - 1;
+
     element.style.setProperty("--segments", String(count));
-    const padded = Array.from({ length: count - samples.length }, () => null).concat(samples);
-    element.innerHTML = padded.map((snapshot) => {
-      const status = snapshot ? normalizeStatus(statusFor(snapshot)) : "unknown";
-      return `<span class="track-segment ${status}" title="${snapshot ? `${formatTime(snapshot.timestamp)} · ${labels[status]}` : "暂无数据"}"></span>`;
-    }).join("");
-    element.setAttribute("aria-label", `${label} 历史状态，最新为 ${labels[normalizeStatus(currentStatus)]}`);
+    const fragment = document.createDocumentFragment();
+    points.forEach((point) => {
+      const segment = document.createElement("span");
+      segment.className = `track-segment ${normalizeStatus(point.status)}`;
+      segment.setAttribute("aria-hidden", "true");
+      fragment.append(segment);
+    });
+    element.replaceChildren(fragment);
+    element.setAttribute("aria-label", `${label} 近 60 分钟历史状态`);
+
+    track.label = label;
+    track.points = points;
+    track.selectedIndex = selectedIndex;
+    updateTrackARIA(track);
+    if (wasActive && wasPinned && selectionExpired) {
+      track.pinned = false;
+      hideTrackTooltip(track, true);
+    } else if (wasActive) {
+      showTrackTooltip(track);
+    }
+  }
+
+  function ensureTrack(element, label) {
+    const existing = state.tracks.get(element.id);
+    if (existing) {
+      existing.label = label;
+      return existing;
+    }
+
+    const track = {
+      element,
+      label,
+      points: [],
+      selectedIndex: 59,
+      pinned: false,
+    };
+    state.tracks.set(element.id, track);
+    element.addEventListener("pointermove", (event) => {
+      if (event.pointerType === "touch" || track.pinned || !track.points.length) return;
+      const index = trackIndexAt(track, event.clientX);
+      if (state.activeTrack === track && track.selectedIndex === index) return;
+      selectTrackPoint(track, index);
+    });
+    element.addEventListener("pointerleave", () => {
+      if (!track.pinned) scheduleTrackTooltipHide(track);
+    });
+    element.addEventListener("click", (event) => {
+      if (!track.points.length) return;
+      const index = trackIndexAt(track, event.clientX);
+      if (state.activeTrack === track && track.pinned && track.selectedIndex === index) {
+        closeTrackTooltip();
+        return;
+      }
+      track.pinned = true;
+      selectTrackPoint(track, index);
+    });
+    element.addEventListener("focus", () => {
+      window.requestAnimationFrame(() => {
+        if (document.activeElement !== element || !track.points.length) return;
+        selectTrackPoint(track, track.selectedIndex);
+      });
+    });
+    element.addEventListener("blur", () => {
+      if (state.activeTrack !== track) return;
+      track.pinned = false;
+      hideTrackTooltip(track, true);
+    });
+    element.addEventListener("keydown", (event) => handleTrackKeydown(event, track));
+    return track;
+  }
+
+  function trackIndexAt(track, clientX) {
+    const bounds = track.element.getBoundingClientRect();
+    const ratio = bounds.width ? (clientX - bounds.left) / bounds.width : 1;
+    return Math.max(0, Math.min(track.points.length - 1, Math.floor(ratio * track.points.length)));
+  }
+
+  function handleTrackKeydown(event, track) {
+    let nextIndex = track.selectedIndex;
+    switch (event.key) {
+      case "ArrowLeft":
+      case "ArrowDown":
+        nextIndex -= 1;
+        break;
+      case "ArrowRight":
+      case "ArrowUp":
+        nextIndex += 1;
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = track.points.length - 1;
+        break;
+      case "Enter":
+      case " ":
+        event.preventDefault();
+        if (state.activeTrack === track && track.pinned) {
+          closeTrackTooltip();
+        } else {
+          track.pinned = true;
+          showTrackTooltip(track);
+        }
+        return;
+      case "Escape":
+        event.preventDefault();
+        closeTrackTooltip();
+        return;
+      default:
+        return;
+    }
+    event.preventDefault();
+    selectTrackPoint(track, Math.max(0, Math.min(track.points.length - 1, nextIndex)));
+  }
+
+  function selectTrackPoint(track, index) {
+    if (!track.points.length) return;
+    track.selectedIndex = Math.max(0, Math.min(track.points.length - 1, index));
+    updateTrackARIA(track);
+    showTrackTooltip(track);
+  }
+
+  function updateTrackARIA(track) {
+    const point = track.points[track.selectedIndex];
+    if (!point) {
+      track.element.setAttribute("aria-valuetext", "等待历史数据");
+      return;
+    }
+    track.element.setAttribute("aria-valuenow", String(track.selectedIndex + 1));
+    track.element.setAttribute("aria-valuemax", String(track.points.length));
+    track.element.setAttribute("aria-valuetext", `${formatSnapshotTime(point.timestamp)}，${point.label} ${labels[normalizeStatus(point.status)]}，${point.metricLabel} ${point.metricValue}，${point.detail}`);
+  }
+
+  function showTrackTooltip(track) {
+    const point = track.points[track.selectedIndex];
+    const segment = track.element.children[track.selectedIndex];
+    if (!point || !segment) return;
+
+    cancelTrackTooltipHide();
+    if (state.activeTrack && state.activeTrack !== track) {
+      state.activeTrack.pinned = false;
+      clearTrackHighlight(state.activeTrack);
+    }
+    state.activeTrack = track;
+    clearTrackHighlight(track);
+    segment.classList.add("is-selected");
+
+    $("track-tooltip-label").textContent = point.label;
+    $("track-tooltip-time").textContent = formatSnapshotTime(point.timestamp);
+    $("track-tooltip-time").dateTime = point.timestamp || "";
+    $("track-tooltip-state").textContent = labels[normalizeStatus(point.status)];
+    setStatusClass($("track-tooltip-state"), point.status);
+    $("track-tooltip-metric-label").textContent = point.metricLabel;
+    $("track-tooltip-metric-value").textContent = point.metricValue;
+    $("track-tooltip-detail").textContent = point.detail;
+
+    const tooltip = $("track-tooltip");
+    tooltip.hidden = false;
+    positionTrackTooltip(track, segment);
+  }
+
+  function positionTrackTooltip(track, segment) {
+    const tooltip = $("track-tooltip");
+    const trackBounds = track.element.getBoundingClientRect();
+    const segmentBounds = segment.getBoundingClientRect();
+    const viewportWidth = document.documentElement.clientWidth;
+    const viewportHeight = document.documentElement.clientHeight;
+    const tooltipWidth = tooltip.offsetWidth;
+    const tooltipHeight = tooltip.offsetHeight;
+    const anchorX = (segmentBounds.left + segmentBounds.right) / 2;
+    const edgeSpace = 12;
+    const left = Math.max(tooltipWidth / 2 + edgeSpace, Math.min(viewportWidth - tooltipWidth / 2 - edgeSpace, anchorX));
+    const gap = 8;
+    const spaceAbove = trackBounds.top - gap - edgeSpace;
+    const spaceBelow = viewportHeight - trackBounds.bottom - gap - edgeSpace;
+    const showBelow = spaceBelow >= tooltipHeight || (spaceAbove < tooltipHeight && spaceBelow > spaceAbove);
+    const preferredTop = showBelow ? trackBounds.bottom + gap : trackBounds.top - tooltipHeight - gap;
+    const top = Math.max(edgeSpace, Math.min(viewportHeight - tooltipHeight - edgeSpace, preferredTop));
+    const arrowX = Math.max(16, Math.min(tooltipWidth - 16, anchorX - (left - tooltipWidth / 2)));
+
+    tooltip.classList.toggle("is-below", showBelow);
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+    tooltip.style.setProperty("--tooltip-arrow-x", `${arrowX}px`);
+  }
+
+  function clearTrackHighlight(track) {
+    const selected = track.element.querySelector(".track-segment.is-selected");
+    if (selected) selected.classList.remove("is-selected");
+  }
+
+  function cancelTrackTooltipHide() {
+    window.clearTimeout(state.tooltipHideTimer);
+    state.tooltipHideTimer = null;
+  }
+
+  function scheduleTrackTooltipHide(track) {
+    cancelTrackTooltipHide();
+    state.tooltipHideTimer = window.setTimeout(() => hideTrackTooltip(track), 120);
+  }
+
+  function hideTrackTooltip(track, force = false) {
+    const active = state.activeTrack;
+    if (!active || track && active !== track || !force && active.pinned) return;
+    cancelTrackTooltipHide();
+    clearTrackHighlight(active);
+    $("track-tooltip").hidden = true;
+    $("track-tooltip").classList.remove("is-below");
+    state.activeTrack = null;
+  }
+
+  function closeTrackTooltip() {
+    if (!state.activeTrack) return;
+    state.activeTrack.pinned = false;
+    hideTrackTooltip(state.activeTrack, true);
   }
 
   function renderService(check) {
@@ -257,7 +585,9 @@
   }
 
   function demoData(kind) {
-    const now = new Date().toISOString();
+    const nowMs = Date.now();
+    const now = new Date(nowMs).toISOString();
+    const historyEnd = Math.floor(nowMs / 60000) * 60000;
     const historyStep = 1;
     const quicStatus = kind === "healthy" ? "healthy" : kind === "critical" ? "critical" : "degraded";
     const overall = kind === "healthy" ? "healthy" : kind === "critical" ? "critical" : "degraded";
@@ -289,27 +619,35 @@
     const history = Array.from({ length: 60 }, (_, index) => {
       const affected = index > 55;
       const connectorFailed = affected && kind === "critical";
+      const historyProtocol = connectorFailed ? "unknown" : protocol === "unknown" ? "quic" : protocol;
       return {
-        timestamp: new Date(Date.now() - (59 - index) * historyStep * 60 * 1000).toISOString(),
+        timestamp: new Date(historyEnd - (59 - index) * historyStep * 60 * 1000).toISOString(),
         overall: affected && kind !== "healthy" ? overall : "healthy",
         connector: {
           ...connector,
-          protocol: connectorFailed ? "unknown" : protocol === "unknown" ? "quic" : protocol,
+          protocol: historyProtocol,
           connections: connectorFailed ? 0 : 4,
           status: connectorFailed ? "critical" : "healthy",
+          detail: connectorFailed ? "没有生产 connector 在线" : `4 条生产 ${protocolLabels[historyProtocol]} connector 在线`,
         },
-        checks: checks.map((check) => ({
-          ...check,
-          status: affected && check.id === "quic-edge" ? quicStatus
+        checks: checks.map((check) => {
+          const status = affected && check.id === "quic-edge" ? quicStatus
             : affected && kind === "critical" && (check.id.startsWith("public-") || check.id === "provider-ai-input") ? "critical"
               : affected && kind === "degraded" && check.id === "provider-krill" ? "degraded"
-                : "healthy",
-        })),
+                : "healthy";
+          if (status !== "healthy") return { ...check, status };
+          if (check.id === "quic-edge") return { ...check, status, latencyMs: 181, detail: "真实 QUIC/TLS 握手成功；未注册 connector" };
+          if (check.id === "public-api") return { ...check, status, latencyMs: 780, detail: "HTTP 200，路径可达" };
+          if (check.id === "public-panel") return { ...check, status, latencyMs: 590, detail: "HTTP 302，Access 保护生效" };
+          if (check.id === "provider-ai-input") return { ...check, status, latencyMs: 2820, detail: "gpt-5.6-sol 最近探测正常" };
+          if (check.id === "provider-krill") return { ...check, status, latencyMs: 447, detail: "gpt-5.6-sol 发布状态正常；延迟为 TTFT P99" };
+          return { ...check, status };
+        }),
       };
     });
     const incidents = kind === "healthy" ? [] : [{
       id: "demo-incident",
-      startedAt: new Date(Date.now() - 75 * 60 * 1000).toISOString(),
+      startedAt: new Date(nowMs - 75 * 60 * 1000).toISOString(),
       open: true,
       severity: overall,
       title: kind === "critical" ? "公网 Tunnel connector 不可用" : "QUIC 备用路径出现降级",
@@ -394,9 +732,36 @@
     if ($("auto-refresh").checked) state.timer = window.setInterval(loadStatus, 30000);
   }
 
+  document.addEventListener("pointerdown", (event) => {
+    if (!state.activeTrack || state.activeTrack.element.contains(event.target) || $("track-tooltip").contains(event.target)) return;
+    closeTrackTooltip();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !state.activeTrack) return;
+    event.preventDefault();
+    closeTrackTooltip();
+  });
+  window.addEventListener("resize", () => {
+    if (!state.activeTrack) return;
+    const segment = state.activeTrack.element.children[state.activeTrack.selectedIndex];
+    if (segment) positionTrackTooltip(state.activeTrack, segment);
+  });
+  window.addEventListener("scroll", (event) => {
+    if ($("track-tooltip").contains(event.target)) return;
+    closeTrackTooltip();
+  }, true);
+  $("track-tooltip").addEventListener("pointerenter", cancelTrackTooltipHide);
+  $("track-tooltip").addEventListener("pointerleave", () => {
+    if (state.activeTrack && !state.activeTrack.pinned) scheduleTrackTooltipHide(state.activeTrack);
+  });
+  $("theme-toggle").addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    applyTheme(next, true);
+  });
   $("refresh-button").addEventListener("click", loadStatus);
   $("auto-refresh").addEventListener("change", startAutoRefresh);
 
+  applyTheme(readTheme());
   loadStatus();
   startAutoRefresh();
 })();

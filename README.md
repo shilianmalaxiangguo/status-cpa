@@ -6,7 +6,9 @@ protocol while independently checking both HTTP/2 and QUIC paths to the edge.
 
 The UI opens directly on HTTP/2 and QUIC health, followed by upstream model
 health for AI INPUT, PIPIO, KRILL, and OPENAI. Each row shows its current state,
-available latency signal, and one-minute history for the latest 60 minutes. Service
+available latency signal, and one-minute history for the latest 60 minutes. Hover,
+tap, or use the keyboard on a minute to inspect its status and probe detail. The
+page defaults to a dark theme and retains an explicit light/dark choice. Service
 paths and recent incidents follow below. It does not require Node.js, Python, a
 database server, or a package manager on the target host.
 
@@ -54,7 +56,7 @@ http://127.0.0.1:19090/?demo=critical
 
 ```bash
 mkdir -p bin
-VERSION="${VERSION:?set VERSION, for example v0.3.2}"
+VERSION="${VERSION:?set VERSION, for example v0.4.0}"
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o bin/status-cpa-linux-amd64 ./cmd/status-cpa
 strings bin/status-cpa-linux-amd64 | grep -F -- "${VERSION}"
