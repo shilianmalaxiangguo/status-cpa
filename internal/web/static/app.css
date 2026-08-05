@@ -1,33 +1,31 @@
 :root {
   color-scheme: dark;
-  --canvas: #0d100e;
-  --surface: #151916;
-  --surface-hover: #1c211d;
-  --surface-raised: #202520;
-  --ink: #edf2ed;
-  --muted: #aab3aa;
-  --faint: #7e887f;
-  --line: #2a312b;
-  --line-strong: #3c463e;
-  --green: #5eff9c;
-  --green-soft: #153622;
-  --green-line: #2f9658;
-  --amber: #f1bd64;
-  --amber-soft: #352912;
-  --amber-line: #745524;
-  --red: #ff5e7a;
-  --red-soft: #3a1820;
-  --red-line: #d64563;
+  --canvas: #000000;
+  --surface: #0a0a0a;
+  --surface-hover: #111111;
+  --surface-raised: #1a1a1a;
+  --ink: #ededed;
+  --secondary: #d4d4d8;
+  --muted: #7a7a82;
+  --faint: #a1a1aa;
+  --line: #27272a;
+  --line-strong: #3f3f46;
+  --green: #22c55e;
+  --green-soft: rgba(34, 197, 94, 0.12);
+  --green-line: rgba(34, 197, 94, 0.42);
+  --amber: #f59e0b;
+  --amber-soft: rgba(245, 158, 11, 0.13);
+  --amber-line: rgba(245, 158, 11, 0.32);
+  --red: #ef4444;
+  --red-soft: rgba(239, 68, 68, 0.12);
+  --red-line: rgba(239, 68, 68, 0.42);
   --blue: #8ac1e7;
   --blue-soft: #172a38;
-  --unknown: #838d84;
-  --header-bg: rgba(13, 16, 14, 0.94);
-  --header-line: rgba(60, 70, 62, 0.8);
-  --brand-border: #4a554b;
-  --brand-bg: #222823;
-  --brand-bars: #d8eee2;
-  --control-hover-border: #59655a;
-  --tunnel-neutral: #b5beb5;
+  --unknown: #52525b;
+  --header-bg: rgba(0, 0, 0, 0.92);
+  --header-line: rgba(255, 255, 255, 0.14);
+  --control-hover-border: #52525b;
+  --tunnel-neutral: #a1a1aa;
   --tag-text: #8edcbd;
   --neutral-soft: #1d221e;
   --neutral-text: #bdc6bd;
@@ -49,21 +47,21 @@
   --badge-openai-border: #465048;
   --badge-openai-bg: #202420;
   --badge-openai-text: #bec6be;
-  --track-base: #252b26;
-  --track-healthy: #5eff9c;
-  --track-degraded: #c58b32;
-  --track-critical: #ff5e7a;
-  --track-unknown: #2a302b;
-  --track-unknown-line: #657067;
-  --alert-text: #f3ca82;
+  --track-base: #27272a;
+  --track-healthy: #22c55e;
+  --track-degraded: #f59e0b;
+  --track-critical: #ef4444;
+  --track-unknown: #18181b;
+  --track-unknown-line: #3f3f46;
+  --alert-text: #fbbf24;
   --toggle-off: #505a51;
   --toggle-shadow: rgba(0, 0, 0, 0.42);
   --toast-bg: #eef3ee;
   --toast-ink: #151915;
   --focus: #7fc0ed;
   --selection: #315c48;
-  --tooltip-bg: #202520;
-  --tooltip-border: #4a554b;
+  --tooltip-bg: #111111;
+  --tooltip-border: #3f3f46;
   --tooltip-shadow: 0 18px 48px rgba(0, 0, 0, 0.46), 0 3px 10px rgba(0, 0, 0, 0.32);
   --space-1: 4px;
   --space-2: 8px;
@@ -77,7 +75,7 @@
   --radius-sm: 4px;
   --radius-md: 8px;
   --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.32), 0 2px 6px rgba(0, 0, 0, 0.24);
-  --font-body: "Avenir Next", "Noto Sans SC", "Segoe UI", sans-serif;
+  --font-body: ui-sans-serif, system-ui, -apple-system, "system-ui", "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
   --font-mono: "SFMono-Regular", "Cascadia Mono", monospace;
 }
 
@@ -88,6 +86,7 @@
   --surface-hover: #fbfcfa;
   --surface-raised: #ffffff;
   --ink: #1b1d1a;
+  --secondary: #3f3f46;
   --muted: #6d736b;
   --faint: #9ca29a;
   --line: #dfe3dc;
@@ -106,9 +105,6 @@
   --unknown: #a4aaa2;
   --header-bg: rgba(247, 248, 245, 0.94);
   --header-line: rgba(200, 206, 197, 0.78);
-  --brand-border: #333a32;
-  --brand-bg: #222720;
-  --brand-bars: #d8eee2;
   --control-hover-border: #9ca39a;
   --tunnel-neutral: #626960;
   --tag-text: #0b6244;
@@ -232,35 +228,12 @@ a {
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
   color: var(--ink);
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 600;
+  line-height: 20px;
   text-decoration: none;
 }
-
-.brand-mark {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: end;
-  justify-content: center;
-  gap: 3px;
-  padding: 6px;
-  border: 1px solid var(--brand-border);
-  border-radius: var(--radius-sm);
-  background: var(--brand-bg);
-}
-
-.brand-mark span {
-  width: 3px;
-  border-radius: 1px;
-  background: var(--brand-bars);
-}
-
-.brand-mark span:nth-child(1) { height: 6px; }
-.brand-mark span:nth-child(2) { height: 13px; }
-.brand-mark span:nth-child(3) { height: 9px; }
 
 .header-actions {
   display: flex;
@@ -272,7 +245,8 @@ a {
 .section-note {
   color: var(--muted);
   font-size: 12px;
-  line-height: 20px;
+  font-weight: 400;
+  line-height: 16px;
 }
 
 .icon-button {
@@ -316,10 +290,9 @@ a {
 .eyebrow {
   margin: 0 0 var(--space-1);
   color: var(--muted);
-  font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 650;
-  line-height: 16px;
+  font-weight: 400;
+  line-height: 15px;
   text-transform: uppercase;
   letter-spacing: 0;
 }
@@ -344,8 +317,9 @@ a {
 .section-heading h1,
 .section-heading h2 {
   margin: 0;
-  font-size: 17px;
-  font-weight: 650;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 600;
   line-height: 24px;
 }
 
@@ -491,9 +465,10 @@ a {
 
 .protocol-title-line h3 {
   margin: 0;
+  color: var(--ink);
   font-size: 14px;
-  font-weight: 650;
-  line-height: 22px;
+  font-weight: 600;
+  line-height: 20px;
 }
 
 .role-tag {
@@ -523,8 +498,9 @@ a {
   margin: 3px 0 0;
   overflow: hidden;
   color: var(--muted);
-  font-size: 11px;
-  line-height: 17px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -543,16 +519,17 @@ a {
 .protocol-metrics span {
   display: block;
   color: var(--muted);
-  font-size: 9px;
-  line-height: 15px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
 }
 
 .protocol-metrics strong {
   display: block;
   overflow: hidden;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
+  color: var(--secondary);
+  font-size: 12px;
+  font-weight: 500;
   line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -736,8 +713,8 @@ a {
   align-items: center;
   gap: 6px;
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 20px;
   white-space: nowrap;
 }
@@ -764,8 +741,9 @@ a {
   min-height: 36px;
   padding-inline: var(--space-1);
   color: var(--muted);
-  font-size: 9px;
-  line-height: 16px;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 15px;
 }
 
 .data-alert {

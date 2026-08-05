@@ -72,7 +72,7 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	}
 
 	assetRecorder := httptest.NewRecorder()
-	assetRequest := httptest.NewRequest(http.MethodGet, "/assets/app.js?v=16", nil)
+	assetRequest := httptest.NewRequest(http.MethodGet, "/assets/app.css?v=17", nil)
 	server.Handler().ServeHTTP(assetRecorder, assetRequest)
 	if assetRecorder.Code != http.StatusOK {
 		t.Fatalf("expected asset response 200, got %d", assetRecorder.Code)
@@ -80,11 +80,16 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	if assetRecorder.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
 		t.Fatalf("expected immutable asset response, got %q", assetRecorder.Header().Get("Cache-Control"))
 	}
+	for _, expected := range []string{`--canvas: #000000`, `--ink: #ededed`, `--muted: #7a7a82`, `--green: #22c55e`, `--amber: #f59e0b`, `--red: #ef4444`} {
+		if !strings.Contains(assetRecorder.Body.String(), expected) {
+			t.Fatalf("expected stylesheet to contain %q", expected)
+		}
+	}
 
 	indexRecorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(indexRecorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	index := indexRecorder.Body.String()
-	for _, expected := range []string{`data-theme="dark"`, `id="theme-toggle"`, `id="track-tooltip"`, `role="slider"`, `id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `id="provider-openai-row"`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=16`, `/assets/app.js?v=16`} {
+	for _, expected := range []string{`data-theme="dark"`, `name="theme-color" content="#000000"`, `id="theme-toggle"`, `id="track-tooltip"`, `role="slider"`, `id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `id="provider-openai-row"`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=17`, `/assets/app.js?v=17`} {
 		if !strings.Contains(index, expected) {
 			t.Fatalf("expected index to contain %q", expected)
 		}
@@ -97,6 +102,9 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	}
 	if strings.Contains(index, `id="protocol-list" aria-live=`) {
 		t.Fatal("expected protocol timeline grid not to be a live region")
+	}
+	if strings.Contains(index, `class="brand-mark"`) {
+		t.Fatal("expected square brand mark to be removed")
 	}
 }
 

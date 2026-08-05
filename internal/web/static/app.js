@@ -51,7 +51,7 @@
     $("theme-toggle").setAttribute("aria-pressed", String(isDark));
     $("theme-toggle").title = `切换到${isDark ? "浅色" : "深色"}主题`;
     $("theme-icon").textContent = isDark ? "☀" : "☾";
-    document.querySelector('meta[name="theme-color"]').content = isDark ? "#0d100e" : "#f7f8f5";
+    document.querySelector('meta[name="theme-color"]').content = isDark ? "#000000" : "#f7f8f5";
     if (!persist) return;
     try {
       window.localStorage.setItem(themeStorageKey, selected);
