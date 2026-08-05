@@ -22,6 +22,7 @@ func TestProbeModelSources(t *testing.T) {
 		body        string
 		wantStatus  model.Status
 		wantLatency float64
+		wantCode    string
 		wantDetail  string
 	}{
 		{
@@ -37,7 +38,24 @@ func TestProbeModelSources(t *testing.T) {
 			kind:       ModelSourcePIPIO,
 			body:       `{"success":true,"data":[{"categoryName":"模型可用性","monitors":[{"name":"gpt-5.6-sol","status":0,"heartbeats":[1,1,0]}]}]}`,
 			wantStatus: model.Critical,
+			wantCode:   "reported_outage",
 			wantDetail: "发布状态中断",
+		},
+		{
+			name:       "PIPIO pending model status",
+			kind:       ModelSourcePIPIO,
+			body:       `{"success":true,"data":[{"categoryName":"模型可用性","monitors":[{"name":"gpt-5.6-sol","status":2,"heartbeats":[1,1,2]}]}]}`,
+			wantStatus: model.Degraded,
+			wantCode:   "reported_degradation",
+			wantDetail: "发布状态确认中",
+		},
+		{
+			name:       "PIPIO model maintenance",
+			kind:       ModelSourcePIPIO,
+			body:       `{"success":true,"data":[{"categoryName":"模型可用性","monitors":[{"name":"gpt-5.6-sol","status":3,"heartbeats":[1,1,3]}]}]}`,
+			wantStatus: model.Degraded,
+			wantCode:   "reported_degradation",
+			wantDetail: "发布状态维护中",
 		},
 		{
 			name:        "KRILL finds latest model state in reversed history",
@@ -45,6 +63,7 @@ func TestProbeModelSources(t *testing.T) {
 			body:        fmt.Sprintf(`{"success":true,"code":0,"data":{"channels":[{"channel_key":"openai_gpt_5_6_sol","model_name":"gpt-5.6-sol","current_status":2,"history":[{"s":2,"ts":"%s"},{"s":1,"ts":"2026-08-04 05:06:00"}]}],"perf":[{"channel_key":"openai_gpt_5_6_sol","ttft_p99_ms":447}]}}`, now.Add(-time.Minute).Format("2006-01-02 15:04:05")),
 			wantStatus:  model.Degraded,
 			wantLatency: 447,
+			wantCode:    "reported_degradation",
 			wantDetail:  "TTFT P99",
 		},
 		{
@@ -71,6 +90,9 @@ func TestProbeModelSources(t *testing.T) {
 			}, now)
 			if check.Status != test.wantStatus || check.LatencyMS != test.wantLatency {
 				t.Fatalf("expected %s at %.0f ms, got %+v", test.wantStatus, test.wantLatency, check)
+			}
+			if check.FailureCode != test.wantCode {
+				t.Fatalf("expected failure code %q, got %+v", test.wantCode, check)
 			}
 			if !strings.Contains(check.Detail, test.wantDetail) {
 				t.Fatalf("expected detail containing %q, got %q", test.wantDetail, check.Detail)

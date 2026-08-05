@@ -172,6 +172,14 @@ func (c *Collector) probePIPIO(ctx context.Context, source ModelSource, check mo
 	case 1:
 		check.Status = model.Healthy
 		check.Detail = targetModelName + " 发布状态正常；未提供模型延迟和更新时间"
+	case 2:
+		check.Status = model.Degraded
+		check.FailureCode = "reported_degradation"
+		check.Detail = targetModelName + " 发布状态确认中；未提供模型延迟和更新时间"
+	case 3:
+		check.Status = model.Degraded
+		check.FailureCode = "reported_degradation"
+		check.Detail = targetModelName + " 发布状态维护中；未提供模型延迟和更新时间"
 	case 0:
 		check.Status = model.Critical
 		check.FailureCode = "reported_outage"
