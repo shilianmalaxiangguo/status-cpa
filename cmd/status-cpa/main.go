@@ -61,9 +61,16 @@ func run() error {
 		},
 		ModelSources: []probe.ModelSource{
 			{ID: "provider-ai-input", Name: "AI INPUT", URL: "https://status.input.im/api/status", Kind: probe.ModelSourceAIInput},
+			{
+				ID:          "provider-ciii",
+				Name:        "CIII",
+				URL:         "https://status.ciii.club/api/status-page/heartbeat/codex",
+				MetadataURL: "https://status.ciii.club/api/status-page/codex",
+				Kind:        probe.ModelSourceCIII,
+			},
 			{ID: "provider-pipio", Name: "PIPIO", URL: "https://pipio.io/api/uptime/status", Kind: probe.ModelSourcePIPIO},
 			{ID: "provider-krill", Name: "KRILL", URL: "https://www.krill-ai.net/api/public/channel-status?hours=24", Kind: probe.ModelSourceKrill},
-			{ID: "provider-openai", Name: "OPENAI", URL: "https://status.openai.com/api/v2/components.json", Kind: probe.ModelSourceOpenAI},
+			{ID: "provider-openai-responses", Name: "OPENAI", URL: "https://status.openai.com/api/v2/components.json", Kind: probe.ModelSourceOpenAI},
 		},
 	})
 

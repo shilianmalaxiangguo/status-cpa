@@ -7,8 +7,8 @@
   <meta name="theme-color" content="#000000">
   <meta name="description" content="CPA Network Status">
   <title>CPA Network Status</title>
-  <link rel="stylesheet" href="/assets/app.css?v=17">
-  <script src="/assets/app.js?v=17" defer></script>
+  <link rel="stylesheet" href="/assets/app.css?v=eb84eccbad1d">
+  <script src="/assets/app.js?v=ce1ff1166ac4" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">跳到状态内容</a>
@@ -123,6 +123,25 @@
           <div class="row-status status-unknown" id="provider-ai-input-status"><span></span>未知</div>
         </article>
 
+        <article class="protocol-row" id="provider-ciii-row" data-provider="provider-ciii">
+          <div class="protocol-primary">
+            <div class="protocol-badge provider-ciii" aria-hidden="true">CI</div>
+            <div>
+              <div class="protocol-title-line">
+                <h3>CIII</h3>
+                <span class="role-tag">gpt-5.6-sol</span>
+              </div>
+              <p class="protocol-description" id="provider-ciii-detail">等待模型状态源</p>
+            </div>
+          </div>
+          <div class="protocol-metrics">
+            <div><span>最近探测延迟</span><strong id="provider-ciii-latency">--</strong></div>
+            <div><span>近 60 分钟可用率</span><strong id="provider-ciii-uptime">--</strong></div>
+          </div>
+          <div class="status-track" id="provider-ciii-track" role="slider" tabindex="0" aria-label="CIII 历史状态" aria-orientation="horizontal" aria-valuemin="1" aria-valuemax="60" aria-valuenow="60" aria-valuetext="等待历史数据"></div>
+          <div class="row-status status-unknown" id="provider-ciii-status"><span></span>未知</div>
+        </article>
+
         <article class="protocol-row" id="provider-pipio-row" data-provider="provider-pipio">
           <div class="protocol-primary">
             <div class="protocol-badge provider-pipio" aria-hidden="true">PI</div>
@@ -161,23 +180,23 @@
           <div class="row-status status-unknown" id="provider-krill-status"><span></span>未知</div>
         </article>
 
-        <article class="protocol-row" id="provider-openai-row" data-provider="provider-openai">
+        <article class="protocol-row" id="provider-openai-responses-row" data-provider="provider-openai-responses">
           <div class="protocol-primary">
-            <div class="protocol-badge provider-openai" aria-hidden="true">OA</div>
+            <div class="protocol-badge provider-openai-responses" aria-hidden="true">OA</div>
             <div>
               <div class="protocol-title-line">
                 <h3>OPENAI</h3>
-                <span class="role-tag role-unknown">Codex API 聚合</span>
+                <span class="role-tag role-unknown">Responses 聚合</span>
               </div>
-              <p class="protocol-description" id="provider-openai-detail">等待 OpenAI 官方状态</p>
+              <p class="protocol-description" id="provider-openai-responses-detail">等待 OpenAI 官方状态</p>
             </div>
           </div>
           <div class="protocol-metrics">
-            <div><span>模型延迟</span><strong id="provider-openai-latency">--</strong></div>
-            <div><span>近 60 分钟可用率</span><strong id="provider-openai-uptime">--</strong></div>
+            <div><span>模型延迟</span><strong id="provider-openai-responses-latency">--</strong></div>
+            <div><span>近 60 分钟可用率</span><strong id="provider-openai-responses-uptime">--</strong></div>
           </div>
-          <div class="status-track" id="provider-openai-track" role="slider" tabindex="0" aria-label="OPENAI Codex API 历史状态" aria-orientation="horizontal" aria-valuemin="1" aria-valuemax="60" aria-valuenow="60" aria-valuetext="等待历史数据"></div>
-          <div class="row-status status-unknown" id="provider-openai-status"><span></span>未知</div>
+          <div class="status-track" id="provider-openai-responses-track" role="slider" tabindex="0" aria-label="OPENAI Responses 历史状态" aria-orientation="horizontal" aria-valuemin="1" aria-valuemax="60" aria-valuenow="60" aria-valuetext="等待历史数据"></div>
+          <div class="row-status status-unknown" id="provider-openai-responses-status"><span></span>未知</div>
         </article>
       </div>
       <div class="track-legend" aria-label="上游状态图例">

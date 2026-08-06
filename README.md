@@ -5,7 +5,7 @@ connector. It reports cloudflared's configured transport mode and active
 protocol while independently checking both HTTP/2 and QUIC paths to the edge.
 
 The UI opens directly on HTTP/2 and QUIC health, followed by upstream model
-health for AI INPUT, PIPIO, KRILL, and OPENAI. Each row shows its current state,
+health for AI INPUT, CIII, PIPIO, KRILL, and OPENAI. Each row shows its current state,
 available latency signal, and one-minute history for the latest 60 minutes. Hover,
 tap, or use the keyboard on a minute to inspect its status and probe detail. The
 page defaults to a dark theme and retains an explicit light/dark choice. Service
@@ -23,11 +23,11 @@ database server, or a package manager on the target host.
   closed immediately; no stream is opened and no Tunnel connector is registered.
 - Local CPA (`8317`) and CPA Manager Plus (`18317`) endpoints.
 - Public API and panel routes without following redirects.
-- Exact `gpt-5.6-sol` status published by AI INPUT, PIPIO, and KRILL. Missing,
+- Exact `gpt-5.6-sol` status published by AI INPUT, CIII, PIPIO, and KRILL. Missing,
   stale, ambiguous, or unreadable model data is reported as unknown.
-- OpenAI's official `Codex API` component. OpenAI does not publish a
-  `gpt-5.6-sol` component, so this row is explicitly labeled as aggregate and
-  does not claim model-level latency.
+- OpenAI's official `Responses` component, which matches the API path used by
+  this model traffic. OpenAI does not publish a `gpt-5.6-sol` component, so this
+  row is explicitly labeled as aggregate and does not claim model-level latency.
 
 The QUIC check follows the probe behavior added to cloudflared 2026.7.x. A UDP
 socket or `nc -u` alone is not treated as success.

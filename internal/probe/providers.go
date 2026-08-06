@@ -15,9 +15,12 @@ import (
 )
 
 const (
-	targetModelName              = "gpt-5.6-sol"
-	openAICodexComponentID       = "01KMP3KP5MGE23B80K1EK4S8PV"
-	maxModelSourceBody     int64 = 2 << 20
+	targetModelName                  = "gpt-5.6-sol"
+	ciiiTargetMonitorID              = 13
+	ciiiTargetMonitorKey             = "13"
+	ciiiTargetMonitorName            = "Ciii-codex gpt-5.6-sol"
+	openAIResponsesComponentID       = "01JP8CD9JR3HR6Y7G4Q75N4DVW"
+	maxModelSourceBody         int64 = 2 << 20
 )
 
 type ModelSourceKind string
@@ -26,14 +29,16 @@ const (
 	ModelSourceAIInput ModelSourceKind = "ai-input"
 	ModelSourcePIPIO   ModelSourceKind = "pipio"
 	ModelSourceKrill   ModelSourceKind = "krill"
+	ModelSourceCIII    ModelSourceKind = "ciii"
 	ModelSourceOpenAI  ModelSourceKind = "openai"
 )
 
 type ModelSource struct {
-	ID   string
-	Name string
-	URL  string
-	Kind ModelSourceKind
+	ID          string
+	Name        string
+	URL         string
+	MetadataURL string
+	Kind        ModelSourceKind
 }
 
 type modelSourceHTTPError struct {
@@ -61,6 +66,8 @@ func (c *Collector) probeModelSource(ctx context.Context, source ModelSource, no
 		return c.probePIPIO(ctx, source, check)
 	case ModelSourceKrill:
 		return c.probeKrill(ctx, source, now, check)
+	case ModelSourceCIII:
+		return c.probeCIII(ctx, source, now, check)
 	case ModelSourceOpenAI:
 		return c.probeOpenAI(ctx, source, check)
 	default:
@@ -300,6 +307,107 @@ func (c *Collector) probeKrill(ctx context.Context, source ModelSource, now time
 	return check
 }
 
+func (c *Collector) probeCIII(ctx context.Context, source ModelSource, now time.Time, check model.Check) model.Check {
+	metadata := struct {
+		PublicGroupList []struct {
+			MonitorList []struct {
+				ID   int    `json:"id"`
+				Name string `json:"name"`
+				Type string `json:"type"`
+			} `json:"monitorList"`
+		} `json:"publicGroupList"`
+	}{}
+	if strings.TrimSpace(source.MetadataURL) == "" {
+		return invalidModelSource(check, "CIII 状态源未配置模型元数据")
+	}
+	if err := c.getModelSourceJSON(ctx, source.MetadataURL, &metadata); err != nil {
+		return unreadableModelSource(check, source.Name, err)
+	}
+	metadataMatches := 0
+	for i := range metadata.PublicGroupList {
+		for j := range metadata.PublicGroupList[i].MonitorList {
+			monitor := metadata.PublicGroupList[i].MonitorList[j]
+			if monitor.ID == ciiiTargetMonitorID && monitor.Name == ciiiTargetMonitorName && monitor.Type == "keyword" {
+				metadataMatches++
+			}
+		}
+	}
+	if metadataMatches != 1 {
+		return invalidModelSource(check, "CIII 没有唯一匹配的 "+targetModelName+" 监控项")
+	}
+
+	type heartbeat struct {
+		Status *int     `json:"status"`
+		Time   string   `json:"time"`
+		Ping   *float64 `json:"ping"`
+	}
+	payload := struct {
+		HeartbeatList map[string][]heartbeat `json:"heartbeatList"`
+	}{}
+	if err := c.getModelSourceJSON(ctx, source.URL, &payload); err != nil {
+		return unreadableModelSource(check, source.Name, err)
+	}
+
+	heartbeats, ok := payload.HeartbeatList[ciiiTargetMonitorKey]
+	if !ok || len(heartbeats) == 0 {
+		return invalidModelSource(check, "CIII 没有完整的 "+targetModelName+" 心跳")
+	}
+	var latest *heartbeat
+	var latestAt time.Time
+	for i := range heartbeats {
+		candidate := &heartbeats[i]
+		if candidate.Status == nil {
+			return invalidModelSource(check, "CIII 模型心跳状态格式无效")
+		}
+		candidateAt, err := time.ParseInLocation("2006-01-02 15:04:05", candidate.Time, time.UTC)
+		if err != nil {
+			return invalidModelSource(check, "CIII 模型心跳时间格式无效")
+		}
+		if latest == nil || candidateAt.After(latestAt) {
+			latest = candidate
+			latestAt = candidateAt
+			continue
+		}
+		if candidateAt.Equal(latestAt) && *candidate.Status != *latest.Status {
+			return invalidModelSource(check, "CIII 最新模型心跳状态相互冲突")
+		}
+	}
+	if latest == nil {
+		return invalidModelSource(check, "CIII 没有完整的 "+targetModelName+" 心跳")
+	}
+	if !freshModelSourceTime(latestAt, now, 3*time.Minute) {
+		check.FailureCode = "source_stale"
+		check.Detail = targetModelName + " 状态超过 3 分钟未更新"
+		return check
+	}
+
+	switch *latest.Status {
+	case 1:
+		if latest.Ping == nil || *latest.Ping < 0 {
+			return invalidModelSource(check, "CIII 最新正常心跳没有有效延迟")
+		}
+		check.Status = model.Healthy
+		check.LatencyMS = *latest.Ping
+		check.Detail = targetModelName + " 最近探测正常"
+	case 2:
+		check.Status = model.Degraded
+		check.FailureCode = "reported_degradation"
+		check.Detail = targetModelName + " 最近探测确认中"
+	case 3:
+		check.Status = model.Degraded
+		check.FailureCode = "reported_degradation"
+		check.Detail = targetModelName + " 最近探测维护中"
+	case 0:
+		check.Status = model.Critical
+		check.FailureCode = "reported_outage"
+		check.Detail = targetModelName + " 最近探测失败"
+	default:
+		check.FailureCode = "unsupported_status"
+		check.Detail = targetModelName + " 返回未知状态"
+	}
+	return check
+}
+
 func (c *Collector) probeOpenAI(ctx context.Context, source ModelSource, check model.Check) model.Check {
 	payload := struct {
 		Components []struct {
@@ -320,30 +428,30 @@ func (c *Collector) probeOpenAI(ctx context.Context, source ModelSource, check m
 	matches := 0
 	for i := range payload.Components {
 		candidate := &payload.Components[i]
-		if candidate.ID == openAICodexComponentID && candidate.Name == "Codex API" {
+		if candidate.ID == openAIResponsesComponentID && candidate.Name == "Responses" {
 			component = candidate
 			matches++
 		}
 	}
 	if matches != 1 || component == nil {
-		return invalidModelSource(check, "OpenAI 官方状态中没有唯一的 Codex API 组件")
+		return invalidModelSource(check, "OpenAI 官方状态中没有唯一的 Responses 组件")
 	}
 
 	switch strings.ToLower(strings.TrimSpace(component.Status)) {
 	case "operational":
 		check.Status = model.Healthy
-		check.Detail = "Codex API 官方聚合状态正常；非 " + targetModelName + " 单模型探测"
+		check.Detail = "Responses 官方聚合状态正常；非 " + targetModelName + " 单模型探测"
 	case "degraded_performance", "partial_outage", "under_maintenance":
 		check.Status = model.Degraded
 		check.FailureCode = "reported_degradation"
-		check.Detail = "Codex API 官方聚合状态降级；非 " + targetModelName + " 单模型探测"
+		check.Detail = "Responses 官方聚合状态降级；非 " + targetModelName + " 单模型探测"
 	case "major_outage":
 		check.Status = model.Critical
 		check.FailureCode = "reported_outage"
-		check.Detail = "Codex API 官方聚合状态中断；非 " + targetModelName + " 单模型探测"
+		check.Detail = "Responses 官方聚合状态中断；非 " + targetModelName + " 单模型探测"
 	default:
 		check.FailureCode = "unsupported_status"
-		check.Detail = "Codex API 官方组件返回未知状态"
+		check.Detail = "Responses 官方组件返回未知状态"
 	}
 	return check
 }

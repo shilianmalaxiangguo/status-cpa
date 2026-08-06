@@ -38,6 +38,9 @@
   --badge-ai-border: #355f4d;
   --badge-ai-bg: #172921;
   --badge-ai-text: #8bd0ae;
+  --badge-ciii-border: #5d5034;
+  --badge-ciii-bg: #2a2418;
+  --badge-ciii-text: #d9bd82;
   --badge-pipio-border: #5b4f68;
   --badge-pipio-bg: #282230;
   --badge-pipio-text: #c3afd1;
@@ -119,6 +122,9 @@
   --badge-ai-border: #b8d4c5;
   --badge-ai-bg: #e8f2ed;
   --badge-ai-text: #225f48;
+  --badge-ciii-border: #d8c79f;
+  --badge-ciii-bg: #f7f0df;
+  --badge-ciii-text: #755a25;
   --badge-pipio-border: #d2c6dc;
   --badge-pipio-bg: #f1edf5;
   --badge-pipio-text: #654b7a;
@@ -438,6 +444,12 @@ a {
   color: var(--badge-ai-text);
 }
 
+.provider-ciii {
+  border-color: var(--badge-ciii-border);
+  background: var(--badge-ciii-bg);
+  color: var(--badge-ciii-text);
+}
+
 .provider-pipio {
   border-color: var(--badge-pipio-border);
   background: var(--badge-pipio-bg);
@@ -450,7 +462,7 @@ a {
   color: var(--badge-krill-text);
 }
 
-.provider-openai {
+.provider-openai-responses {
   border-color: var(--badge-openai-border);
   background: var(--badge-openai-bg);
   color: var(--badge-openai-text);

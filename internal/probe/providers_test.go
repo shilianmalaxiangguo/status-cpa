@@ -12,6 +12,8 @@ import (
 	"github.com/shilianmalaxiangguo/status-cpa/internal/model"
 )
 
+const ciiiModelMetadata = `{"publicGroupList":[{"monitorList":[{"id":13,"name":"Ciii-codex gpt-5.6-sol","type":"keyword"}]}]}`
+
 func TestProbeModelSources(t *testing.T) {
 	t.Parallel()
 
@@ -67,9 +69,41 @@ func TestProbeModelSources(t *testing.T) {
 			wantDetail:  "TTFT P99",
 		},
 		{
-			name:       "OpenAI Codex API aggregate health",
+			name:        "CIII exact model health and latency",
+			kind:        ModelSourceCIII,
+			body:        `{"heartbeatList":{"13":[{"status":1,"time":"2026-08-04 05:09:30.123","msg":"","ping":3002}]}}`,
+			wantStatus:  model.Healthy,
+			wantLatency: 3002,
+			wantDetail:  "最近探测正常",
+		},
+		{
+			name:       "CIII exact model outage",
+			kind:       ModelSourceCIII,
+			body:       `{"heartbeatList":{"13":[{"status":0,"time":"2026-08-04 05:09:30.123","msg":"","ping":null}]}}`,
+			wantStatus: model.Critical,
+			wantCode:   "reported_outage",
+			wantDetail: "最近探测失败",
+		},
+		{
+			name:       "CIII pending model heartbeat",
+			kind:       ModelSourceCIII,
+			body:       `{"heartbeatList":{"13":[{"status":2,"time":"2026-08-04 05:09:30.123","msg":"","ping":null}]}}`,
+			wantStatus: model.Degraded,
+			wantCode:   "reported_degradation",
+			wantDetail: "最近探测确认中",
+		},
+		{
+			name:       "CIII model maintenance",
+			kind:       ModelSourceCIII,
+			body:       `{"heartbeatList":{"13":[{"status":3,"time":"2026-08-04 05:09:30.123","msg":"","ping":null}]}}`,
+			wantStatus: model.Degraded,
+			wantCode:   "reported_degradation",
+			wantDetail: "最近探测维护中",
+		},
+		{
+			name:       "OpenAI Responses aggregate health",
 			kind:       ModelSourceOpenAI,
-			body:       `{"components":[{"id":"01KMP3KP5MGE23B80K1EK4S8PV","name":"Codex API","status":"operational"}]}`,
+			body:       `{"components":[{"id":"01JP8CD9JR3HR6Y7G4Q75N4DVW","name":"Responses","status":"operational"}]}`,
 			wantStatus: model.Healthy,
 			wantDetail: "非 gpt-5.6-sol 单模型探测",
 		},
@@ -82,11 +116,16 @@ func TestProbeModelSources(t *testing.T) {
 			server := newJSONServer(test.body)
 			defer server.Close()
 			collector := New(Config{Timeout: time.Second})
+			metadataURL := ""
+			if test.kind == ModelSourceCIII {
+				metadataURL = server.URL + "/metadata"
+			}
 			check := collector.probeModelSource(context.Background(), ModelSource{
-				ID:   "model-source-test",
-				Name: test.name,
-				URL:  server.URL,
-				Kind: test.kind,
+				ID:          "model-source-test",
+				Name:        test.name,
+				URL:         server.URL,
+				MetadataURL: metadataURL,
+				Kind:        test.kind,
 			}, now)
 			if check.Status != test.wantStatus || check.LatencyMS != test.wantLatency {
 				t.Fatalf("expected %s at %.0f ms, got %+v", test.wantStatus, test.wantLatency, check)
@@ -106,11 +145,12 @@ func TestProbeModelSourcesRejectInvalidOrStaleData(t *testing.T) {
 
 	now := time.Date(2026, 8, 4, 5, 10, 0, 0, time.UTC)
 	tests := []struct {
-		name        string
-		kind        ModelSourceKind
-		body        string
-		contentType string
-		wantCode    string
+		name         string
+		kind         ModelSourceKind
+		body         string
+		metadataBody string
+		contentType  string
+		wantCode     string
 	}{
 		{
 			name:     "AI INPUT stale sample",
@@ -137,9 +177,22 @@ func TestProbeModelSourcesRejectInvalidOrStaleData(t *testing.T) {
 			wantCode: "source_invalid",
 		},
 		{
+			name:     "CIII stale model heartbeat",
+			kind:     ModelSourceCIII,
+			body:     `{"heartbeatList":{"13":[{"status":1,"time":"2026-08-04 05:06:00.000","msg":"","ping":100}]}}`,
+			wantCode: "source_stale",
+		},
+		{
+			name:         "CIII rejects mismatched model metadata",
+			kind:         ModelSourceCIII,
+			body:         `{"heartbeatList":{"13":[{"status":1,"time":"2026-08-04 05:09:30.000","msg":"","ping":100}]}}`,
+			metadataBody: `{"publicGroupList":[{"monitorList":[{"id":13,"name":"different model","type":"keyword"}]}]}`,
+			wantCode:     "source_invalid",
+		},
+		{
 			name:     "OpenAI requires exact component",
 			kind:     ModelSourceOpenAI,
-			body:     `{"components":[{"id":"different","name":"Codex API","status":"operational"}]}`,
+			body:     `{"components":[{"id":"01KMP3KP5MGE23B80K1EK4S8PV","name":"Codex API","status":"operational"}]}`,
 			wantCode: "source_invalid",
 		},
 		{
@@ -155,21 +208,33 @@ func TestProbeModelSourcesRejectInvalidOrStaleData(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				contentType := test.contentType
 				if contentType == "" {
 					contentType = "application/json"
 				}
 				w.Header().Set("Content-Type", contentType)
-				_, _ = fmt.Fprint(w, test.body)
+				body := test.body
+				if r.URL.Path == "/metadata" {
+					body = ciiiModelMetadata
+					if test.metadataBody != "" {
+						body = test.metadataBody
+					}
+				}
+				_, _ = fmt.Fprint(w, body)
 			}))
 			defer server.Close()
 			collector := New(Config{Timeout: time.Second})
+			metadataURL := ""
+			if test.kind == ModelSourceCIII {
+				metadataURL = server.URL + "/metadata"
+			}
 			check := collector.probeModelSource(context.Background(), ModelSource{
-				ID:   "model-source-test",
-				Name: test.name,
-				URL:  server.URL,
-				Kind: test.kind,
+				ID:          "model-source-test",
+				Name:        test.name,
+				URL:         server.URL,
+				MetadataURL: metadataURL,
+				Kind:        test.kind,
 			}, now)
 			if check.Status != model.Unknown || check.FailureCode != test.wantCode {
 				t.Fatalf("expected unknown with %s, got %+v", test.wantCode, check)
@@ -199,8 +264,12 @@ func TestBuildSnapshotKeepsModelSourcesOutOfNetworkStatus(t *testing.T) {
 }
 
 func newJSONServer(body string) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.URL.Path == "/metadata" {
+			_, _ = fmt.Fprint(w, ciiiModelMetadata)
+			return
+		}
 		_, _ = fmt.Fprint(w, body)
 	}))
 }

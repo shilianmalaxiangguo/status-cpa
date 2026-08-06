@@ -72,7 +72,7 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	}
 
 	assetRecorder := httptest.NewRecorder()
-	assetRequest := httptest.NewRequest(http.MethodGet, "/assets/app.css?v=17", nil)
+	assetRequest := httptest.NewRequest(http.MethodGet, "/assets/app.css?v=eb84eccbad1d", nil)
 	server.Handler().ServeHTTP(assetRecorder, assetRequest)
 	if assetRecorder.Code != http.StatusOK {
 		t.Fatalf("expected asset response 200, got %d", assetRecorder.Code)
@@ -89,10 +89,18 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	indexRecorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(indexRecorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	index := indexRecorder.Body.String()
-	for _, expected := range []string{`data-theme="dark"`, `name="theme-color" content="#000000"`, `id="theme-toggle"`, `id="track-tooltip"`, `role="slider"`, `id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `id="provider-openai-row"`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=17`, `/assets/app.js?v=17`} {
+	for _, expected := range []string{`data-theme="dark"`, `name="theme-color" content="#000000"`, `id="theme-toggle"`, `id="track-tooltip"`, `role="slider"`, `id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `id="provider-ciii-row"`, `id="provider-openai-responses-row"`, `Responses 聚合`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=eb84eccbad1d`, `/assets/app.js?v=ce1ff1166ac4`} {
 		if !strings.Contains(index, expected) {
 			t.Fatalf("expected index to contain %q", expected)
 		}
+	}
+	previousProvider := -1
+	for _, id := range []string{"provider-ai-input-row", "provider-ciii-row", "provider-pipio-row", "provider-krill-row", "provider-openai-responses-row"} {
+		position := strings.Index(index, `id="`+id+`"`)
+		if position <= previousProvider {
+			t.Fatalf("expected provider %s after the previous provider", id)
+		}
+		previousProvider = position
 	}
 	if strings.Contains(index, `data-range=`) {
 		t.Fatal("expected historical range switch to be removed")
