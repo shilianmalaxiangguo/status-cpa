@@ -1,6 +1,7 @@
 package web
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -71,8 +72,14 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 		t.Fatalf("expected one-minute buckets, got %s", response.History[1].Timestamp.Sub(response.History[0].Timestamp))
 	}
 
+	css, err := staticFiles.ReadFile("static/app.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cssHash := sha256.Sum256(css)
+	cssVersion := fmt.Sprintf("%x", cssHash[:6])
 	assetRecorder := httptest.NewRecorder()
-	assetRequest := httptest.NewRequest(http.MethodGet, "/assets/app.css?v=eb84eccbad1d", nil)
+	assetRequest := httptest.NewRequest(http.MethodGet, "/assets/app.css?v="+cssVersion, nil)
 	server.Handler().ServeHTTP(assetRecorder, assetRequest)
 	if assetRecorder.Code != http.StatusOK {
 		t.Fatalf("expected asset response 200, got %d", assetRecorder.Code)
@@ -89,7 +96,7 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	indexRecorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(indexRecorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	index := indexRecorder.Body.String()
-	for _, expected := range []string{`data-theme="dark"`, `name="theme-color" content="#000000"`, `id="theme-toggle"`, `id="track-tooltip"`, `role="slider"`, `id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `id="provider-ciii-row"`, `id="provider-openai-responses-row"`, `Responses 聚合`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=eb84eccbad1d`, `/assets/app.js?v=ce1ff1166ac4`} {
+	for _, expected := range []string{`data-theme="dark"`, `name="theme-color" content="#000000"`, `id="theme-toggle"`, `id="track-tooltip"`, `role="slider"`, `id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `id="provider-ciii-row"`, `id="provider-openai-responses-row"`, `Responses 聚合`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=` + cssVersion, `/assets/app.js?v=ce1ff1166ac4`} {
 		if !strings.Contains(index, expected) {
 			t.Fatalf("expected index to contain %q", expected)
 		}
