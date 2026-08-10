@@ -78,6 +78,12 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	}
 	cssHash := sha256.Sum256(css)
 	cssVersion := fmt.Sprintf("%x", cssHash[:6])
+	js, err := staticFiles.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	jsHash := sha256.Sum256(js)
+	jsVersion := fmt.Sprintf("%x", jsHash[:6])
 	assetRecorder := httptest.NewRecorder()
 	assetRequest := httptest.NewRequest(http.MethodGet, "/assets/app.css?v="+cssVersion, nil)
 	server.Handler().ServeHTTP(assetRecorder, assetRequest)
@@ -96,13 +102,18 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	indexRecorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(indexRecorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	index := indexRecorder.Body.String()
-	for _, expected := range []string{`data-theme="dark"`, `name="theme-color" content="#000000"`, `id="theme-toggle"`, `id="track-tooltip"`, `role="slider"`, `id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `id="provider-ciii-row"`, `id="provider-openai-responses-row"`, `Responses 聚合`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=` + cssVersion, `/assets/app.js?v=ce1ff1166ac4`} {
+	for _, expected := range []string{`data-theme="dark"`, `name="theme-color" content="#000000"`, `id="theme-toggle"`, `id="track-tooltip"`, `role="slider"`, `id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `id="provider-ciii-row"`, `id="provider-openai-conversations-row"`, `Conversations 聚合`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=` + cssVersion, `/assets/app.js?v=` + jsVersion} {
 		if !strings.Contains(index, expected) {
 			t.Fatalf("expected index to contain %q", expected)
 		}
 	}
+	for _, obsolete := range []string{"provider-openai-responses", "OPENAI Responses", "Responses 聚合", "Responses 官方"} {
+		if strings.Contains(index, obsolete) || strings.Contains(string(js), obsolete) || strings.Contains(string(css), obsolete) {
+			t.Fatalf("expected Conversations migration to remove %q", obsolete)
+		}
+	}
 	previousProvider := -1
-	for _, id := range []string{"provider-ai-input-row", "provider-ciii-row", "provider-pipio-row", "provider-krill-row", "provider-openai-responses-row"} {
+	for _, id := range []string{"provider-ai-input-row", "provider-ciii-row", "provider-pipio-row", "provider-krill-row", "provider-openai-conversations-row"} {
 		position := strings.Index(index, `id="`+id+`"`)
 		if position <= previousProvider {
 			t.Fatalf("expected provider %s after the previous provider", id)
@@ -120,6 +131,71 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	}
 	if strings.Contains(index, `class="brand-mark"`) {
 		t.Fatal("expected square brand mark to be removed")
+	}
+}
+
+func TestStatusAPIFiltersObsoleteOpenAIResponsesHistory(t *testing.T) {
+	t.Parallel()
+
+	store, err := history.New(filepath.Join(t.TempDir(), "history.jsonl"), 24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest := time.Now().UTC().Truncate(time.Second)
+	connector := model.Connector{Mode: "auto", Protocol: "quic", Connections: 4, Status: model.Healthy}
+	if err := store.Append(model.Snapshot{
+		Timestamp: latest.Add(-2 * time.Minute),
+		Overall:   model.Healthy,
+		Connector: connector,
+		Checks: []model.Check{{
+			ID: "provider-openai-responses", Name: "OPENAI", Status: model.Degraded,
+			Detail: "Responses 官方聚合状态降级",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Append(model.Snapshot{
+		Timestamp: latest,
+		Overall:   model.Healthy,
+		Connector: connector,
+		Checks: []model.Check{{
+			ID: "provider-openai-conversations", Name: "OPENAI", Status: model.Healthy,
+			Detail: "Conversations 官方聚合状态正常",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	server.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/status", nil))
+	var response model.APIResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if hasCheck(response.Current.Checks, "provider-openai-responses") {
+		t.Fatalf("expected obsolete OpenAI check to be removed from current snapshot, got %+v", response.Current.Checks)
+	}
+	if checkStatus(response.Current.Checks, "provider-openai-conversations") != model.Healthy {
+		t.Fatalf("expected current Conversations status to remain healthy, got %+v", response.Current.Checks)
+	}
+	for _, snapshot := range response.History {
+		if hasCheck(snapshot.Checks, "provider-openai-responses") {
+			t.Fatalf("expected obsolete OpenAI check to be removed from history, got %+v", snapshot.Checks)
+		}
+	}
+	if checkStatus(response.History[len(response.History)-1].Checks, "provider-openai-conversations") != model.Healthy {
+		t.Fatalf("expected latest Conversations status in the rightmost bucket, got %+v", response.History[len(response.History)-1])
+	}
+	for _, incident := range response.Incidents {
+		if incident.CheckID == "provider-openai-responses" {
+			t.Fatalf("expected obsolete OpenAI incident to be removed, got %+v", incident)
+		}
+	}
+	if strings.Contains(recorder.Body.String(), "Responses 官方") {
+		t.Fatalf("expected obsolete Responses detail to be absent, got %s", recorder.Body.String())
 	}
 }
 
@@ -367,4 +443,13 @@ func checkStatus(checks []model.Check, id string) model.Status {
 		}
 	}
 	return model.Unknown
+}
+
+func hasCheck(checks []model.Check, id string) bool {
+	for _, check := range checks {
+		if check.ID == id {
+			return true
+		}
+	}
+	return false
 }

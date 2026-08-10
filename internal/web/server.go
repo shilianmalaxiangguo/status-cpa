@@ -18,8 +18,9 @@ import (
 var staticFiles embed.FS
 
 const (
-	statusWindow  = 60 * time.Minute
-	statusBuckets = 60
+	statusWindow                   = 60 * time.Minute
+	statusBuckets                  = 60
+	obsoleteOpenAIResponsesCheckID = "provider-openai-responses"
 )
 
 type Server struct {
@@ -60,7 +61,7 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
-	snapshots := s.store.Since(time.Time{})
+	snapshots := withoutObsoleteChecks(s.store.Since(time.Time{}))
 	var current model.Snapshot
 	ok := len(snapshots) > 0
 	if ok {
@@ -193,6 +194,30 @@ func cloneSnapshot(snapshot model.Snapshot) model.Snapshot {
 	cloned.Checks = append([]model.Check(nil), snapshot.Checks...)
 	cloned.Connector.ProtocolStatuses = cloneProtocolStatuses(snapshot.Connector.ProtocolStatuses)
 	return cloned
+}
+
+func withoutObsoleteChecks(snapshots []model.Snapshot) []model.Snapshot {
+	filtered := append([]model.Snapshot(nil), snapshots...)
+	for i, snapshot := range snapshots {
+		hasObsolete := false
+		for _, check := range snapshot.Checks {
+			if check.ID == obsoleteOpenAIResponsesCheckID {
+				hasObsolete = true
+				break
+			}
+		}
+		if !hasObsolete {
+			continue
+		}
+		checks := make([]model.Check, 0, len(snapshot.Checks)-1)
+		for _, check := range snapshot.Checks {
+			if check.ID != obsoleteOpenAIResponsesCheckID {
+				checks = append(checks, check)
+			}
+		}
+		filtered[i].Checks = checks
+	}
+	return filtered
 }
 
 func mergeWorst(bucket *model.Snapshot, candidate model.Snapshot) {

@@ -15,12 +15,12 @@ import (
 )
 
 const (
-	targetModelName                  = "gpt-5.6-sol"
-	ciiiTargetMonitorID              = 13
-	ciiiTargetMonitorKey             = "13"
-	ciiiTargetMonitorName            = "Ciii-codex gpt-5.6-sol"
-	openAIResponsesComponentID       = "01JP8CD9JR3HR6Y7G4Q75N4DVW"
-	maxModelSourceBody         int64 = 2 << 20
+	targetModelName                      = "gpt-5.6-sol"
+	ciiiTargetMonitorID                  = 13
+	ciiiTargetMonitorKey                 = "13"
+	ciiiTargetMonitorName                = "Ciii-codex gpt-5.6-sol"
+	openAIConversationsComponentID       = "01JMXBNJXGV1T5GT2M9XA83XNG"
+	maxModelSourceBody             int64 = 2 << 20
 )
 
 type ModelSourceKind string
@@ -428,30 +428,30 @@ func (c *Collector) probeOpenAI(ctx context.Context, source ModelSource, check m
 	matches := 0
 	for i := range payload.Components {
 		candidate := &payload.Components[i]
-		if candidate.ID == openAIResponsesComponentID && candidate.Name == "Responses" {
+		if candidate.ID == openAIConversationsComponentID && candidate.Name == "Conversations" {
 			component = candidate
 			matches++
 		}
 	}
 	if matches != 1 || component == nil {
-		return invalidModelSource(check, "OpenAI 官方状态中没有唯一的 Responses 组件")
+		return invalidModelSource(check, "OpenAI 官方状态中没有唯一的 Conversations 组件")
 	}
 
 	switch strings.ToLower(strings.TrimSpace(component.Status)) {
 	case "operational":
 		check.Status = model.Healthy
-		check.Detail = "Responses 官方聚合状态正常；非 " + targetModelName + " 单模型探测"
+		check.Detail = "Conversations 官方聚合状态正常；非 " + targetModelName + " 单模型探测"
 	case "degraded_performance", "partial_outage", "under_maintenance":
 		check.Status = model.Degraded
 		check.FailureCode = "reported_degradation"
-		check.Detail = "Responses 官方聚合状态降级；非 " + targetModelName + " 单模型探测"
-	case "major_outage":
+		check.Detail = "Conversations 官方聚合状态降级；非 " + targetModelName + " 单模型探测"
+	case "full_outage", "major_outage":
 		check.Status = model.Critical
 		check.FailureCode = "reported_outage"
-		check.Detail = "Responses 官方聚合状态中断；非 " + targetModelName + " 单模型探测"
+		check.Detail = "Conversations 官方聚合状态中断；非 " + targetModelName + " 单模型探测"
 	default:
 		check.FailureCode = "unsupported_status"
-		check.Detail = "Responses 官方组件返回未知状态"
+		check.Detail = "Conversations 官方组件返回未知状态"
 	}
 	return check
 }

@@ -529,7 +529,7 @@ a {
   color: var(--badge-krill-text);
 }
 
-.provider-openai-responses {
+.provider-openai-conversations {
   border-color: var(--badge-openai-border);
   background: var(--badge-openai-bg);
   color: var(--badge-openai-text);

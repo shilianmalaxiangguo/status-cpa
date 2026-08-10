@@ -70,7 +70,7 @@ func run() error {
 			},
 			{ID: "provider-pipio", Name: "PIPIO", URL: "https://pipio.io/api/uptime/status", Kind: probe.ModelSourcePIPIO},
 			{ID: "provider-krill", Name: "KRILL", URL: "https://www.krill-ai.net/api/public/channel-status?hours=24", Kind: probe.ModelSourceKrill},
-			{ID: "provider-openai-responses", Name: "OPENAI", URL: "https://status.openai.com/api/v2/components.json", Kind: probe.ModelSourceOpenAI},
+			{ID: "provider-openai-conversations", Name: "OPENAI", URL: "https://status.openai.com/api/v2/components.json", Kind: probe.ModelSourceOpenAI},
 		},
 	})
 

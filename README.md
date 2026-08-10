@@ -25,9 +25,9 @@ database server, or a package manager on the target host.
 - Public API and panel routes without following redirects.
 - Exact `gpt-5.6-sol` status published by AI INPUT, CIII, PIPIO, and KRILL. Missing,
   stale, ambiguous, or unreadable model data is reported as unknown.
-- OpenAI's official `Responses` component, which matches the API path used by
-  this model traffic. OpenAI does not publish a `gpt-5.6-sol` component, so this
-  row is explicitly labeled as aggregate and does not claim model-level latency.
+- OpenAI's official `Conversations` component from the ChatGPT group. OpenAI does
+  not publish a `gpt-5.6-sol` component, so this row is explicitly labeled as
+  aggregate and does not claim model-level latency.
 
 The QUIC check follows the probe behavior added to cloudflared 2026.7.x. A UDP
 socket or `nc -u` alone is not treated as success.
