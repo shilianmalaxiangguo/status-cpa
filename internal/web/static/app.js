@@ -616,7 +616,7 @@
       { id: "provider-ciii", name: "CIII", protocol: "model", status: "healthy", latencyMs: 3002, detail: "gpt-5.6-sol 最近探测正常" },
       { id: "provider-pipio", name: "PIPIO", protocol: "model", status: "healthy", latencyMs: 0, detail: "gpt-5.6-sol 发布状态正常；未提供模型延迟和更新时间" },
       { id: "provider-krill", name: "KRILL", protocol: "model", status: krillStatus, latencyMs: 447, detail: `gpt-5.6-sol 发布状态${krillStatus === "healthy" ? "正常" : "降级"}；延迟为 TTFT P99` },
-      { id: "provider-jimu-ai", name: "JiMu-Ai", protocol: "model", status: "healthy", latencyMs: 42, detail: "gpt-5.6-sol 最近探测正常" },
+      { id: "provider-jimu-ai", name: "JiMu-Ai", protocol: "model", status: "healthy", latencyMs: 42, detail: "gpt-5.5 最近探测正常" },
       { id: "provider-openai-conversations", name: "OPENAI", protocol: "model", status: "healthy", latencyMs: 0, detail: "Conversations 官方聚合状态正常；非 gpt-5.6-sol 单模型探测" },
     ];
     const summary = kind === "healthy" ? "自动模式当前选择 QUIC，HTTP/2 备用路径正常" : kind === "critical" ? "公网入口无法找到健康 Tunnel connector" : "HTTP/2 生产隧道正常，QUIC 备用路径出现降级";

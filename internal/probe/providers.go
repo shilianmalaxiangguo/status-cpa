@@ -17,6 +17,7 @@ import (
 
 const (
 	targetModelName                      = "gpt-5.6-sol"
+	jimuAITargetModelName                = "gpt-5.5"
 	ciiiTargetMonitorID                  = 13
 	ciiiTargetMonitorKey                 = "13"
 	ciiiTargetMonitorName                = "Ciii-codex gpt-5.6-sol"
@@ -414,6 +415,7 @@ func (c *Collector) probeCIII(ctx context.Context, source ModelSource, now time.
 }
 
 func (c *Collector) probeJiMuAI(ctx context.Context, source ModelSource, now time.Time, check model.Check) model.Check {
+	check.Detail = jimuAITargetModelName + " 状态尚未读取"
 	metadata := struct {
 		PublicGroupList []struct {
 			MonitorList []struct {
@@ -438,7 +440,7 @@ func (c *Collector) probeJiMuAI(ctx context.Context, source ModelSource, now tim
 		for j := range metadata.PublicGroupList[i].MonitorList {
 			monitor := metadata.PublicGroupList[i].MonitorList[j]
 			monitorIDCounts[monitor.ID]++
-			if monitor.Name == targetModelName {
+			if monitor.Name == jimuAITargetModelName {
 				monitorID = monitor.ID
 				monitorType = monitor.Type
 				matches++
@@ -446,19 +448,19 @@ func (c *Collector) probeJiMuAI(ctx context.Context, source ModelSource, now tim
 		}
 	}
 	if matches == 0 {
-		return invalidModelSource(check, "JiMu-Ai 尚未公开 "+targetModelName+" 探针")
+		return invalidModelSource(check, "JiMu-Ai 尚未公开 "+jimuAITargetModelName+" 探针")
 	}
 	if matches > 1 {
-		return invalidModelSource(check, "JiMu-Ai 发布了多个 "+targetModelName+" 探针")
+		return invalidModelSource(check, "JiMu-Ai 发布了多个 "+jimuAITargetModelName+" 探针")
 	}
 	if monitorID <= 0 {
-		return invalidModelSource(check, "JiMu-Ai 的 "+targetModelName+" 探针 ID 无效")
+		return invalidModelSource(check, "JiMu-Ai 的 "+jimuAITargetModelName+" 探针 ID 无效")
 	}
 	if monitorIDCounts[monitorID] != 1 {
-		return invalidModelSource(check, "JiMu-Ai 的 "+targetModelName+" 探针 ID 绑定不唯一")
+		return invalidModelSource(check, "JiMu-Ai 的 "+jimuAITargetModelName+" 探针 ID 绑定不唯一")
 	}
 	if monitorType != "http" {
-		return invalidModelSource(check, "JiMu-Ai 的 "+targetModelName+" 探针类型不是 HTTP")
+		return invalidModelSource(check, "JiMu-Ai 的 "+jimuAITargetModelName+" 探针类型不是 HTTP")
 	}
 
 	type heartbeat struct {
@@ -476,7 +478,7 @@ func (c *Collector) probeJiMuAI(ctx context.Context, source ModelSource, now tim
 
 	heartbeats, ok := payload.HeartbeatList[strconv.Itoa(monitorID)]
 	if !ok || len(heartbeats) == 0 {
-		return invalidModelSource(check, "JiMu-Ai 没有完整的 "+targetModelName+" 心跳")
+		return invalidModelSource(check, "JiMu-Ai 没有完整的 "+jimuAITargetModelName+" 心跳")
 	}
 	var latest *heartbeat
 	var latestAt time.Time
@@ -505,11 +507,11 @@ func (c *Collector) probeJiMuAI(ctx context.Context, source ModelSource, now tim
 		}
 	}
 	if latest == nil {
-		return invalidModelSource(check, "JiMu-Ai 没有完整的 "+targetModelName+" 心跳")
+		return invalidModelSource(check, "JiMu-Ai 没有完整的 "+jimuAITargetModelName+" 心跳")
 	}
 	if !freshModelSourceTime(latestAt, now, 7*time.Minute) {
 		check.FailureCode = "source_stale"
-		check.Detail = targetModelName + " 状态超过 7 分钟未更新"
+		check.Detail = jimuAITargetModelName + " 状态超过 7 分钟未更新"
 		return check
 	}
 
@@ -521,22 +523,22 @@ func (c *Collector) probeJiMuAI(ctx context.Context, source ModelSource, now tim
 		}
 		check.Status = model.Healthy
 		check.LatencyMS = *latest.Ping
-		check.Detail = targetModelName + " 最近探测正常"
+		check.Detail = jimuAITargetModelName + " 最近探测正常"
 	case 2:
 		check.Status = model.Degraded
 		check.FailureCode = "reported_degradation"
-		check.Detail = targetModelName + " 最近探测确认中" + messageSuffix
+		check.Detail = jimuAITargetModelName + " 最近探测确认中" + messageSuffix
 	case 3:
 		check.Status = model.Degraded
 		check.FailureCode = "reported_degradation"
-		check.Detail = targetModelName + " 最近探测维护中" + messageSuffix
+		check.Detail = jimuAITargetModelName + " 最近探测维护中" + messageSuffix
 	case 0:
 		check.Status = model.Critical
 		check.FailureCode = "reported_outage"
-		check.Detail = targetModelName + " 最近探测失败" + messageSuffix
+		check.Detail = jimuAITargetModelName + " 最近探测失败" + messageSuffix
 	default:
 		check.FailureCode = "unsupported_status"
-		check.Detail = targetModelName + " 返回未知状态"
+		check.Detail = jimuAITargetModelName + " 返回未知状态"
 	}
 	return check
 }

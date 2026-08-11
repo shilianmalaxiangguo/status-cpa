@@ -102,10 +102,13 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	indexRecorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(indexRecorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	index := indexRecorder.Body.String()
-	for _, expected := range []string{`data-theme="dark"`, `name="theme-color" content="#000000"`, `id="theme-toggle"`, `id="track-tooltip"`, `role="slider"`, `id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `id="provider-ciii-row"`, `id="provider-jimu-ai-row"`, `id="provider-openai-conversations-row"`, `JiMu-Ai`, `Conversations 聚合`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=` + cssVersion, `/assets/app.js?v=` + jsVersion} {
+	for _, expected := range []string{`data-theme="dark"`, `name="theme-color" content="#000000"`, `id="theme-toggle"`, `id="track-tooltip"`, `role="slider"`, `id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `id="provider-ciii-row"`, `id="provider-jimu-ai-row"`, `id="provider-openai-conversations-row"`, `JiMu-Ai`, `<span class="role-tag">gpt-5.5</span>`, `评判目标 · 按渠道标注`, `Conversations 聚合`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=` + cssVersion, `/assets/app.js?v=` + jsVersion} {
 		if !strings.Contains(index, expected) {
 			t.Fatalf("expected index to contain %q", expected)
 		}
+	}
+	if strings.Contains(index, `评判模型 · gpt-5.6-sol`) {
+		t.Fatal("expected mixed provider targets not to be labeled uniformly as gpt-5.6-sol")
 	}
 	for _, obsolete := range []string{"provider-openai-responses", "OPENAI Responses", "Responses 聚合", "Responses 官方"} {
 		if strings.Contains(index, obsolete) || strings.Contains(string(js), obsolete) || strings.Contains(string(css), obsolete) {

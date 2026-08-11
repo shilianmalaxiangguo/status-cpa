@@ -23,10 +23,10 @@ database server, or a package manager on the target host.
   closed immediately; no stream is opened and no Tunnel connector is registered.
 - Local CPA (`8317`) and CPA Manager Plus (`18317`) endpoints.
 - Public API and panel routes without following redirects.
-- Exact `gpt-5.6-sol` status published by AI INPUT, CIII, PIPIO, and KRILL. JiMu-Ai
-  is included but currently does not publish that target probe, so it remains unknown
-  instead of falling back to another model. Missing, stale, ambiguous, or unreadable
-  model data is always reported as unknown.
+- Exact `gpt-5.6-sol` status published by AI INPUT, CIII, PIPIO, and KRILL.
+  JiMu-Ai uses its published `gpt-5.5` probe because it does not currently expose
+  a `gpt-5.6-sol` health monitor. Missing, stale, ambiguous, or unreadable model
+  data is always reported as unknown.
 - OpenAI's official `Conversations` component from the ChatGPT group. OpenAI does
   not publish a `gpt-5.6-sol` component, so this row is explicitly labeled as
   aggregate and does not claim model-level latency.
