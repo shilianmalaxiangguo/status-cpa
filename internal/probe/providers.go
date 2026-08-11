@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ const (
 	ciiiTargetMonitorKey                 = "13"
 	ciiiTargetMonitorName                = "Ciii-codex gpt-5.6-sol"
 	openAIConversationsComponentID       = "01JMXBNJXGV1T5GT2M9XA83XNG"
+	maxModelSourceMessageRunes           = 240
 	maxModelSourceBody             int64 = 2 << 20
 )
 
@@ -30,6 +32,7 @@ const (
 	ModelSourcePIPIO   ModelSourceKind = "pipio"
 	ModelSourceKrill   ModelSourceKind = "krill"
 	ModelSourceCIII    ModelSourceKind = "ciii"
+	ModelSourceJiMuAI  ModelSourceKind = "jimu-ai"
 	ModelSourceOpenAI  ModelSourceKind = "openai"
 )
 
@@ -68,6 +71,8 @@ func (c *Collector) probeModelSource(ctx context.Context, source ModelSource, no
 		return c.probeKrill(ctx, source, now, check)
 	case ModelSourceCIII:
 		return c.probeCIII(ctx, source, now, check)
+	case ModelSourceJiMuAI:
+		return c.probeJiMuAI(ctx, source, now, check)
 	case ModelSourceOpenAI:
 		return c.probeOpenAI(ctx, source, check)
 	default:
@@ -408,6 +413,134 @@ func (c *Collector) probeCIII(ctx context.Context, source ModelSource, now time.
 	return check
 }
 
+func (c *Collector) probeJiMuAI(ctx context.Context, source ModelSource, now time.Time, check model.Check) model.Check {
+	metadata := struct {
+		PublicGroupList []struct {
+			MonitorList []struct {
+				ID   int    `json:"id"`
+				Name string `json:"name"`
+				Type string `json:"type"`
+			} `json:"monitorList"`
+		} `json:"publicGroupList"`
+	}{}
+	if strings.TrimSpace(source.MetadataURL) == "" {
+		return invalidModelSource(check, "JiMu-Ai 状态源未配置模型元数据")
+	}
+	if err := c.getModelSourceJSON(ctx, source.MetadataURL, &metadata); err != nil {
+		return unreadableModelSource(check, source.Name, err)
+	}
+
+	monitorID := 0
+	monitorType := ""
+	matches := 0
+	monitorIDCounts := make(map[int]int)
+	for i := range metadata.PublicGroupList {
+		for j := range metadata.PublicGroupList[i].MonitorList {
+			monitor := metadata.PublicGroupList[i].MonitorList[j]
+			monitorIDCounts[monitor.ID]++
+			if monitor.Name == targetModelName {
+				monitorID = monitor.ID
+				monitorType = monitor.Type
+				matches++
+			}
+		}
+	}
+	if matches == 0 {
+		return invalidModelSource(check, "JiMu-Ai 尚未公开 "+targetModelName+" 探针")
+	}
+	if matches > 1 {
+		return invalidModelSource(check, "JiMu-Ai 发布了多个 "+targetModelName+" 探针")
+	}
+	if monitorID <= 0 {
+		return invalidModelSource(check, "JiMu-Ai 的 "+targetModelName+" 探针 ID 无效")
+	}
+	if monitorIDCounts[monitorID] != 1 {
+		return invalidModelSource(check, "JiMu-Ai 的 "+targetModelName+" 探针 ID 绑定不唯一")
+	}
+	if monitorType != "http" {
+		return invalidModelSource(check, "JiMu-Ai 的 "+targetModelName+" 探针类型不是 HTTP")
+	}
+
+	type heartbeat struct {
+		Status  *int     `json:"status"`
+		Time    string   `json:"time"`
+		Message string   `json:"msg"`
+		Ping    *float64 `json:"ping"`
+	}
+	payload := struct {
+		HeartbeatList map[string][]heartbeat `json:"heartbeatList"`
+	}{}
+	if err := c.getModelSourceJSON(ctx, source.URL, &payload); err != nil {
+		return unreadableModelSource(check, source.Name, err)
+	}
+
+	heartbeats, ok := payload.HeartbeatList[strconv.Itoa(monitorID)]
+	if !ok || len(heartbeats) == 0 {
+		return invalidModelSource(check, "JiMu-Ai 没有完整的 "+targetModelName+" 心跳")
+	}
+	var latest *heartbeat
+	var latestAt time.Time
+	for i := range heartbeats {
+		candidate := &heartbeats[i]
+		if candidate.Status == nil {
+			return invalidModelSource(check, "JiMu-Ai 模型心跳状态格式无效")
+		}
+		candidateAt, err := time.ParseInLocation("2006-01-02 15:04:05", candidate.Time, time.UTC)
+		if err != nil {
+			return invalidModelSource(check, "JiMu-Ai 模型心跳时间格式无效")
+		}
+		if latest == nil || candidateAt.After(latestAt) {
+			latest = candidate
+			latestAt = candidateAt
+			continue
+		}
+		if candidateAt.Equal(latestAt) {
+			samePing := candidate.Ping == nil && latest.Ping == nil
+			if candidate.Ping != nil && latest.Ping != nil {
+				samePing = *candidate.Ping == *latest.Ping
+			}
+			if *candidate.Status != *latest.Status || !samePing || candidate.Message != latest.Message {
+				return invalidModelSource(check, "JiMu-Ai 最新模型心跳内容相互冲突")
+			}
+		}
+	}
+	if latest == nil {
+		return invalidModelSource(check, "JiMu-Ai 没有完整的 "+targetModelName+" 心跳")
+	}
+	if !freshModelSourceTime(latestAt, now, 7*time.Minute) {
+		check.FailureCode = "source_stale"
+		check.Detail = targetModelName + " 状态超过 7 分钟未更新"
+		return check
+	}
+
+	messageSuffix := boundedModelSourceMessageSuffix(latest.Message)
+	switch *latest.Status {
+	case 1:
+		if latest.Ping == nil || *latest.Ping < 0 {
+			return invalidModelSource(check, "JiMu-Ai 最新正常心跳没有有效延迟")
+		}
+		check.Status = model.Healthy
+		check.LatencyMS = *latest.Ping
+		check.Detail = targetModelName + " 最近探测正常"
+	case 2:
+		check.Status = model.Degraded
+		check.FailureCode = "reported_degradation"
+		check.Detail = targetModelName + " 最近探测确认中" + messageSuffix
+	case 3:
+		check.Status = model.Degraded
+		check.FailureCode = "reported_degradation"
+		check.Detail = targetModelName + " 最近探测维护中" + messageSuffix
+	case 0:
+		check.Status = model.Critical
+		check.FailureCode = "reported_outage"
+		check.Detail = targetModelName + " 最近探测失败" + messageSuffix
+	default:
+		check.FailureCode = "unsupported_status"
+		check.Detail = targetModelName + " 返回未知状态"
+	}
+	return check
+}
+
 func (c *Collector) probeOpenAI(ctx context.Context, source ModelSource, check model.Check) model.Check {
 	payload := struct {
 		Components []struct {
@@ -503,6 +636,18 @@ func invalidModelSource(check model.Check, detail string) model.Check {
 	check.FailureCode = "source_invalid"
 	check.Detail = detail
 	return check
+}
+
+func boundedModelSourceMessageSuffix(value string) string {
+	message := strings.Join(strings.Fields(value), " ")
+	if message == "" {
+		return ""
+	}
+	runes := []rune(message)
+	if len(runes) > maxModelSourceMessageRunes {
+		message = string(runes[:maxModelSourceMessageRunes]) + "..."
+	}
+	return "：" + message
 }
 
 func freshModelSourceTime(value, now time.Time, maxAge time.Duration) bool {

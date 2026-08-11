@@ -102,7 +102,7 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	indexRecorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(indexRecorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	index := indexRecorder.Body.String()
-	for _, expected := range []string{`data-theme="dark"`, `name="theme-color" content="#000000"`, `id="theme-toggle"`, `id="track-tooltip"`, `role="slider"`, `id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `id="provider-ciii-row"`, `id="provider-openai-conversations-row"`, `Conversations 聚合`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=` + cssVersion, `/assets/app.js?v=` + jsVersion} {
+	for _, expected := range []string{`data-theme="dark"`, `name="theme-color" content="#000000"`, `id="theme-toggle"`, `id="track-tooltip"`, `role="slider"`, `id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `id="provider-ciii-row"`, `id="provider-jimu-ai-row"`, `id="provider-openai-conversations-row"`, `JiMu-Ai`, `Conversations 聚合`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=` + cssVersion, `/assets/app.js?v=` + jsVersion} {
 		if !strings.Contains(index, expected) {
 			t.Fatalf("expected index to contain %q", expected)
 		}
@@ -113,12 +113,20 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 		}
 	}
 	previousProvider := -1
-	for _, id := range []string{"provider-ai-input-row", "provider-ciii-row", "provider-pipio-row", "provider-krill-row", "provider-openai-conversations-row"} {
+	for _, id := range []string{"provider-ai-input-row", "provider-ciii-row", "provider-pipio-row", "provider-krill-row", "provider-jimu-ai-row", "provider-openai-conversations-row"} {
 		position := strings.Index(index, `id="`+id+`"`)
 		if position <= previousProvider {
 			t.Fatalf("expected provider %s after the previous provider", id)
 		}
 		previousProvider = position
+	}
+	for _, id := range []string{"provider-ai-input", "provider-ciii", "provider-pipio", "provider-krill", "provider-jimu-ai", "provider-openai-conversations"} {
+		if !strings.Contains(index, `<p class="sr-only" id="`+id+`-detail">`) {
+			t.Fatalf("expected provider %s detail to be visually hidden", id)
+		}
+	}
+	if count := strings.Count(index, `<span>可用率</span>`); count != 6 {
+		t.Fatalf("expected six compact provider availability labels, got %d", count)
 	}
 	if strings.Contains(index, `data-range=`) {
 		t.Fatal("expected historical range switch to be removed")

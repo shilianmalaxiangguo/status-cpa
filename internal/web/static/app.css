@@ -47,6 +47,9 @@
   --badge-krill-border: #456477;
   --badge-krill-bg: #192833;
   --badge-krill-text: #9bc6dc;
+  --badge-jimu-border: #386065;
+  --badge-jimu-bg: #16292b;
+  --badge-jimu-text: #8ccdd0;
   --badge-openai-border: #465048;
   --badge-openai-bg: #202420;
   --badge-openai-text: #bec6be;
@@ -131,6 +134,9 @@
   --badge-krill-border: #bfd1dc;
   --badge-krill-bg: #eaf1f5;
   --badge-krill-text: #2d5d78;
+  --badge-jimu-border: #b7d1d2;
+  --badge-jimu-bg: #e8f3f3;
+  --badge-jimu-text: #28666a;
   --badge-openai-border: #c9cdc7;
   --badge-openai-bg: #f1f2ef;
   --badge-openai-text: #4f554f;
@@ -407,9 +413,9 @@ a {
   grid-template-areas:
     "primary metrics status"
     "track track track";
-  gap: var(--space-2) var(--space-5);
-  min-height: 116px;
-  padding: var(--space-3) var(--space-4);
+  gap: var(--space-1) var(--space-5);
+  min-height: 96px;
+  padding: var(--space-2) var(--space-4);
 }
 
 #provider-list .protocol-primary {
@@ -427,12 +433,6 @@ a {
   padding: 1px 5px;
   font-size: 9px;
   line-height: 12px;
-}
-
-#provider-list .protocol-description {
-  margin-block-start: 2px;
-  font-size: 11px;
-  line-height: 14px;
 }
 
 #provider-list .protocol-title-line h3 {
@@ -465,7 +465,7 @@ a {
 }
 
 #provider-list .track-segment {
-  height: 16px;
+  height: 20px;
 }
 
 .protocol-primary {
@@ -527,6 +527,12 @@ a {
   border-color: var(--badge-krill-border);
   background: var(--badge-krill-bg);
   color: var(--badge-krill-text);
+}
+
+.provider-jimu-ai {
+  border-color: var(--badge-jimu-border);
+  background: var(--badge-jimu-bg);
+  color: var(--badge-jimu-text);
 }
 
 .provider-openai-conversations {
@@ -1197,12 +1203,32 @@ a {
       "metrics metrics"
       "track track";
     gap: var(--space-1) var(--space-3);
-    min-height: 132px;
+    min-height: 116px;
     padding: var(--space-2) var(--space-4);
   }
 
   #provider-list .protocol-metrics {
     gap: var(--space-3);
+  }
+
+  #provider-list .protocol-metrics div {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-1);
+  }
+
+  #provider-list .protocol-metrics span,
+  #provider-list .protocol-metrics strong {
+    display: inline;
+    line-height: 16px;
+  }
+
+  #provider-list .protocol-metrics span {
+    white-space: nowrap;
+  }
+
+  #provider-list .protocol-metrics strong {
+    flex: 0 0 auto;
   }
 }
 
@@ -1315,8 +1341,8 @@ a {
       "primary metrics status"
       "track track track";
     gap: var(--space-1) var(--space-4);
-    min-height: 116px;
-    padding: var(--space-3) var(--space-4);
+    min-height: 96px;
+    padding: var(--space-2) var(--space-4);
   }
 }
 
@@ -1328,7 +1354,7 @@ a {
       "metrics metrics"
       "track track";
     gap: var(--space-1) var(--space-3);
-    min-height: 132px;
+    min-height: 116px;
     padding: var(--space-2) var(--space-4);
   }
 }

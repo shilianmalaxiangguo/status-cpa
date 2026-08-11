@@ -12,20 +12,24 @@ import (
 	"github.com/shilianmalaxiangguo/status-cpa/internal/model"
 )
 
-const ciiiModelMetadata = `{"publicGroupList":[{"monitorList":[{"id":13,"name":"Ciii-codex gpt-5.6-sol","type":"keyword"}]}]}`
+const (
+	ciiiModelMetadata   = `{"publicGroupList":[{"monitorList":[{"id":13,"name":"Ciii-codex gpt-5.6-sol","type":"keyword"}]}]}`
+	jimuAIModelMetadata = `{"publicGroupList":[{"monitorList":[{"id":21,"name":"gpt-5.6-sol","type":"http"}]}]}`
+)
 
 func TestProbeModelSources(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 8, 4, 5, 10, 0, 0, time.UTC)
 	tests := []struct {
-		name        string
-		kind        ModelSourceKind
-		body        string
-		wantStatus  model.Status
-		wantLatency float64
-		wantCode    string
-		wantDetail  string
+		name         string
+		kind         ModelSourceKind
+		body         string
+		metadataBody string
+		wantStatus   model.Status
+		wantLatency  float64
+		wantCode     string
+		wantDetail   string
 	}{
 		{
 			name:        "AI INPUT exact model health and latency",
@@ -75,6 +79,42 @@ func TestProbeModelSources(t *testing.T) {
 			wantStatus:  model.Healthy,
 			wantLatency: 3002,
 			wantDetail:  "最近探测正常",
+		},
+		{
+			name:         "JiMu-Ai exact model health and latency",
+			kind:         ModelSourceJiMuAI,
+			body:         `{"heartbeatList":{"21":[{"status":1,"time":"2026-08-04 05:09:30.123","msg":"","ping":42}]}}`,
+			metadataBody: jimuAIModelMetadata,
+			wantStatus:   model.Healthy,
+			wantLatency:  42,
+			wantDetail:   "最近探测正常",
+		},
+		{
+			name:         "JiMu-Ai exact model outage",
+			kind:         ModelSourceJiMuAI,
+			body:         `{"heartbeatList":{"21":[{"status":0,"time":"2026-08-04 05:09:30.123","msg":"timeout","ping":null}]}}`,
+			metadataBody: jimuAIModelMetadata,
+			wantStatus:   model.Critical,
+			wantCode:     "reported_outage",
+			wantDetail:   "最近探测失败",
+		},
+		{
+			name:         "JiMu-Ai pending model heartbeat",
+			kind:         ModelSourceJiMuAI,
+			body:         `{"heartbeatList":{"21":[{"status":2,"time":"2026-08-04 05:09:30.123","msg":"","ping":null}]}}`,
+			metadataBody: jimuAIModelMetadata,
+			wantStatus:   model.Degraded,
+			wantCode:     "reported_degradation",
+			wantDetail:   "最近探测确认中",
+		},
+		{
+			name:         "JiMu-Ai model maintenance",
+			kind:         ModelSourceJiMuAI,
+			body:         `{"heartbeatList":{"21":[{"status":3,"time":"2026-08-04 05:09:30.123","msg":"","ping":null}]}}`,
+			metadataBody: jimuAIModelMetadata,
+			wantStatus:   model.Degraded,
+			wantCode:     "reported_degradation",
+			wantDetail:   "最近探测维护中",
 		},
 		{
 			name:       "CIII exact model outage",
@@ -153,11 +193,11 @@ func TestProbeModelSources(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			server := newJSONServer(test.body)
+			server := newJSONServer(test.body, test.metadataBody)
 			defer server.Close()
 			collector := New(Config{Timeout: time.Second})
 			metadataURL := ""
-			if test.kind == ModelSourceCIII {
+			if test.kind == ModelSourceCIII || test.kind == ModelSourceJiMuAI {
 				metadataURL = server.URL + "/metadata"
 			}
 			check := collector.probeModelSource(context.Background(), ModelSource{
@@ -191,6 +231,7 @@ func TestProbeModelSourcesRejectInvalidOrStaleData(t *testing.T) {
 		metadataBody string
 		contentType  string
 		wantCode     string
+		wantDetail   string
 	}{
 		{
 			name:     "AI INPUT stale sample",
@@ -228,6 +269,54 @@ func TestProbeModelSourcesRejectInvalidOrStaleData(t *testing.T) {
 			body:         `{"heartbeatList":{"13":[{"status":1,"time":"2026-08-04 05:09:30.000","msg":"","ping":100}]}}`,
 			metadataBody: `{"publicGroupList":[{"monitorList":[{"id":13,"name":"different model","type":"keyword"}]}]}`,
 			wantCode:     "source_invalid",
+		},
+		{
+			name:         "JiMu-Ai rejects metadata without target probe",
+			kind:         ModelSourceJiMuAI,
+			body:         `{"heartbeatList":{"6":[{"status":1,"time":"2026-08-04 05:09:30.000","msg":"","ping":3}]}}`,
+			metadataBody: `{"publicGroupList":[{"monitorList":[{"id":6,"name":"gpt-5.5","type":"http"},{"id":8,"name":"claude-opus-4-6","type":"http"}]}]}`,
+			wantCode:     "source_invalid",
+			wantDetail:   "尚未公开 gpt-5.6-sol 探针",
+		},
+		{
+			name:         "JiMu-Ai rejects duplicate target probes",
+			kind:         ModelSourceJiMuAI,
+			body:         `{"heartbeatList":{"21":[{"status":1,"time":"2026-08-04 05:09:30.000","msg":"","ping":3}]}}`,
+			metadataBody: `{"publicGroupList":[{"monitorList":[{"id":21,"name":"gpt-5.6-sol","type":"http"},{"id":22,"name":"gpt-5.6-sol","type":"http"}]}]}`,
+			wantCode:     "source_invalid",
+			wantDetail:   "多个 gpt-5.6-sol 探针",
+		},
+		{
+			name:         "JiMu-Ai rejects target ID shared with another monitor",
+			kind:         ModelSourceJiMuAI,
+			body:         `{"heartbeatList":{"21":[{"status":1,"time":"2026-08-04 05:09:30.000","msg":"","ping":3}]}}`,
+			metadataBody: `{"publicGroupList":[{"monitorList":[{"id":21,"name":"gpt-5.6-sol","type":"http"},{"id":21,"name":"gpt-5.5","type":"http"}]}]}`,
+			wantCode:     "source_invalid",
+			wantDetail:   "探针 ID 绑定不唯一",
+		},
+		{
+			name:         "JiMu-Ai rejects non-HTTP target probe",
+			kind:         ModelSourceJiMuAI,
+			body:         `{"heartbeatList":{"21":[{"status":1,"time":"2026-08-04 05:09:30.000","msg":"","ping":3}]}}`,
+			metadataBody: `{"publicGroupList":[{"monitorList":[{"id":21,"name":"gpt-5.6-sol","type":"keyword"}]}]}`,
+			wantCode:     "source_invalid",
+			wantDetail:   "探针类型不是 HTTP",
+		},
+		{
+			name:         "JiMu-Ai rejects conflicting latest heartbeat content",
+			kind:         ModelSourceJiMuAI,
+			body:         `{"heartbeatList":{"21":[{"status":1,"time":"2026-08-04 05:09:30.000","msg":"","ping":3},{"status":1,"time":"2026-08-04 05:09:30.000","msg":"","ping":4}]}}`,
+			metadataBody: jimuAIModelMetadata,
+			wantCode:     "source_invalid",
+			wantDetail:   "心跳内容相互冲突",
+		},
+		{
+			name:         "JiMu-Ai stale model heartbeat",
+			kind:         ModelSourceJiMuAI,
+			body:         `{"heartbeatList":{"21":[{"status":1,"time":"2026-08-04 05:02:59.000","msg":"","ping":3}]}}`,
+			metadataBody: jimuAIModelMetadata,
+			wantCode:     "source_stale",
+			wantDetail:   "超过 7 分钟未更新",
 		},
 		{
 			name:     "OpenAI rejects former Responses component",
@@ -275,6 +364,9 @@ func TestProbeModelSourcesRejectInvalidOrStaleData(t *testing.T) {
 				body := test.body
 				if r.URL.Path == "/metadata" {
 					body = ciiiModelMetadata
+					if test.kind == ModelSourceJiMuAI {
+						body = jimuAIModelMetadata
+					}
 					if test.metadataBody != "" {
 						body = test.metadataBody
 					}
@@ -284,7 +376,7 @@ func TestProbeModelSourcesRejectInvalidOrStaleData(t *testing.T) {
 			defer server.Close()
 			collector := New(Config{Timeout: time.Second})
 			metadataURL := ""
-			if test.kind == ModelSourceCIII {
+			if test.kind == ModelSourceCIII || test.kind == ModelSourceJiMuAI {
 				metadataURL = server.URL + "/metadata"
 			}
 			check := collector.probeModelSource(context.Background(), ModelSource{
@@ -297,7 +389,33 @@ func TestProbeModelSourcesRejectInvalidOrStaleData(t *testing.T) {
 			if check.Status != model.Unknown || check.FailureCode != test.wantCode {
 				t.Fatalf("expected unknown with %s, got %+v", test.wantCode, check)
 			}
+			if test.wantDetail != "" && !strings.Contains(check.Detail, test.wantDetail) {
+				t.Fatalf("expected detail containing %q, got %q", test.wantDetail, check.Detail)
+			}
 		})
+	}
+}
+
+func TestProbeJiMuAITruncatesHeartbeatMessage(t *testing.T) {
+	t.Parallel()
+
+	message := strings.Repeat("x", 2000)
+	body := fmt.Sprintf(`{"heartbeatList":{"21":[{"status":0,"time":"2026-08-04 05:09:30.000","msg":"%s","ping":null}]}}`, message)
+	server := newJSONServer(body, jimuAIModelMetadata)
+	defer server.Close()
+	collector := New(Config{Timeout: time.Second})
+	check := collector.probeModelSource(context.Background(), ModelSource{
+		ID:          "provider-jimu-ai",
+		Name:        "JiMu-Ai",
+		URL:         server.URL,
+		MetadataURL: server.URL + "/metadata",
+		Kind:        ModelSourceJiMuAI,
+	}, time.Date(2026, 8, 4, 5, 10, 0, 0, time.UTC))
+	if check.Status != model.Critical || check.FailureCode != "reported_outage" {
+		t.Fatalf("expected reported outage, got %+v", check)
+	}
+	if strings.Count(check.Detail, "x") != maxModelSourceMessageRunes || !strings.HasSuffix(check.Detail, "...") {
+		t.Fatalf("expected bounded heartbeat message, got %d bytes: %q", len(check.Detail), check.Detail)
 	}
 }
 
@@ -321,11 +439,14 @@ func TestBuildSnapshotKeepsModelSourcesOutOfNetworkStatus(t *testing.T) {
 	}
 }
 
-func newJSONServer(body string) *httptest.Server {
+func newJSONServer(body, metadataBody string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if r.URL.Path == "/metadata" {
-			_, _ = fmt.Fprint(w, ciiiModelMetadata)
+			if metadataBody == "" {
+				metadataBody = ciiiModelMetadata
+			}
+			_, _ = fmt.Fprint(w, metadataBody)
 			return
 		}
 		_, _ = fmt.Fprint(w, body)

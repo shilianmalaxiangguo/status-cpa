@@ -7,8 +7,8 @@
   <meta name="theme-color" content="#000000">
   <meta name="description" content="CPA Network Status">
   <title>CPA Network Status</title>
-  <link rel="stylesheet" href="/assets/app.css?v=5d78878d96fc">
-  <script src="/assets/app.js?v=8a71c9e6ddd0" defer></script>
+  <link rel="stylesheet" href="/assets/app.css?v=cf2294351d33">
+  <script src="/assets/app.js?v=380d5f45cc09" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">跳到状态内容</a>
@@ -112,12 +112,12 @@
                 <h3>AI INPUT</h3>
                 <span class="role-tag">gpt-5.6-sol</span>
               </div>
-              <p class="protocol-description" id="provider-ai-input-detail">等待模型状态源</p>
+              <p class="sr-only" id="provider-ai-input-detail">等待模型状态源</p>
             </div>
           </div>
           <div class="protocol-metrics">
-            <div><span>最近探测延迟</span><strong id="provider-ai-input-latency">--</strong></div>
-            <div><span>近 60 分钟可用率</span><strong id="provider-ai-input-uptime">--</strong></div>
+            <div><span>延迟</span><strong id="provider-ai-input-latency">--</strong></div>
+            <div><span>可用率</span><strong id="provider-ai-input-uptime">--</strong></div>
           </div>
           <div class="status-track" id="provider-ai-input-track" role="slider" tabindex="0" aria-label="AI INPUT 历史状态" aria-orientation="horizontal" aria-valuemin="1" aria-valuemax="60" aria-valuenow="60" aria-valuetext="等待历史数据"></div>
           <div class="row-status status-unknown" id="provider-ai-input-status"><span></span>未知</div>
@@ -131,12 +131,12 @@
                 <h3>CIII</h3>
                 <span class="role-tag">gpt-5.6-sol</span>
               </div>
-              <p class="protocol-description" id="provider-ciii-detail">等待模型状态源</p>
+              <p class="sr-only" id="provider-ciii-detail">等待模型状态源</p>
             </div>
           </div>
           <div class="protocol-metrics">
-            <div><span>最近探测延迟</span><strong id="provider-ciii-latency">--</strong></div>
-            <div><span>近 60 分钟可用率</span><strong id="provider-ciii-uptime">--</strong></div>
+            <div><span>延迟</span><strong id="provider-ciii-latency">--</strong></div>
+            <div><span>可用率</span><strong id="provider-ciii-uptime">--</strong></div>
           </div>
           <div class="status-track" id="provider-ciii-track" role="slider" tabindex="0" aria-label="CIII 历史状态" aria-orientation="horizontal" aria-valuemin="1" aria-valuemax="60" aria-valuenow="60" aria-valuetext="等待历史数据"></div>
           <div class="row-status status-unknown" id="provider-ciii-status"><span></span>未知</div>
@@ -150,12 +150,12 @@
                 <h3>PIPIO</h3>
                 <span class="role-tag">gpt-5.6-sol</span>
               </div>
-              <p class="protocol-description" id="provider-pipio-detail">等待模型状态源</p>
+              <p class="sr-only" id="provider-pipio-detail">等待模型状态源</p>
             </div>
           </div>
           <div class="protocol-metrics">
-            <div><span>模型延迟</span><strong id="provider-pipio-latency">--</strong></div>
-            <div><span>近 60 分钟可用率</span><strong id="provider-pipio-uptime">--</strong></div>
+            <div><span>延迟</span><strong id="provider-pipio-latency">--</strong></div>
+            <div><span>可用率</span><strong id="provider-pipio-uptime">--</strong></div>
           </div>
           <div class="status-track" id="provider-pipio-track" role="slider" tabindex="0" aria-label="PIPIO 历史状态" aria-orientation="horizontal" aria-valuemin="1" aria-valuemax="60" aria-valuenow="60" aria-valuetext="等待历史数据"></div>
           <div class="row-status status-unknown" id="provider-pipio-status"><span></span>未知</div>
@@ -169,15 +169,34 @@
                 <h3>KRILL</h3>
                 <span class="role-tag">gpt-5.6-sol</span>
               </div>
-              <p class="protocol-description" id="provider-krill-detail">等待模型状态源</p>
+              <p class="sr-only" id="provider-krill-detail">等待模型状态源</p>
             </div>
           </div>
           <div class="protocol-metrics">
             <div><span>TTFT P99</span><strong id="provider-krill-latency">--</strong></div>
-            <div><span>近 60 分钟可用率</span><strong id="provider-krill-uptime">--</strong></div>
+            <div><span>可用率</span><strong id="provider-krill-uptime">--</strong></div>
           </div>
           <div class="status-track" id="provider-krill-track" role="slider" tabindex="0" aria-label="KRILL 历史状态" aria-orientation="horizontal" aria-valuemin="1" aria-valuemax="60" aria-valuenow="60" aria-valuetext="等待历史数据"></div>
           <div class="row-status status-unknown" id="provider-krill-status"><span></span>未知</div>
+        </article>
+
+        <article class="protocol-row" id="provider-jimu-ai-row" data-provider="provider-jimu-ai">
+          <div class="protocol-primary">
+            <div class="protocol-badge provider-jimu-ai" aria-hidden="true">JM</div>
+            <div>
+              <div class="protocol-title-line">
+                <h3>JiMu-Ai</h3>
+                <span class="role-tag">gpt-5.6-sol</span>
+              </div>
+              <p class="sr-only" id="provider-jimu-ai-detail">等待模型状态源</p>
+            </div>
+          </div>
+          <div class="protocol-metrics">
+            <div><span>延迟</span><strong id="provider-jimu-ai-latency">--</strong></div>
+            <div><span>可用率</span><strong id="provider-jimu-ai-uptime">--</strong></div>
+          </div>
+          <div class="status-track" id="provider-jimu-ai-track" role="slider" tabindex="0" aria-label="JiMu-Ai 历史状态" aria-orientation="horizontal" aria-valuemin="1" aria-valuemax="60" aria-valuenow="60" aria-valuetext="等待历史数据"></div>
+          <div class="row-status status-unknown" id="provider-jimu-ai-status"><span></span>未知</div>
         </article>
 
         <article class="protocol-row" id="provider-openai-conversations-row" data-provider="provider-openai-conversations">
@@ -188,12 +207,12 @@
                 <h3>OPENAI</h3>
                 <span class="role-tag role-unknown">Conversations 聚合</span>
               </div>
-              <p class="protocol-description" id="provider-openai-conversations-detail">等待 OpenAI 官方状态</p>
+              <p class="sr-only" id="provider-openai-conversations-detail">等待 OpenAI 官方状态</p>
             </div>
           </div>
           <div class="protocol-metrics">
-            <div><span>模型延迟</span><strong id="provider-openai-conversations-latency">--</strong></div>
-            <div><span>近 60 分钟可用率</span><strong id="provider-openai-conversations-uptime">--</strong></div>
+            <div><span>延迟</span><strong id="provider-openai-conversations-latency">--</strong></div>
+            <div><span>可用率</span><strong id="provider-openai-conversations-uptime">--</strong></div>
           </div>
           <div class="status-track" id="provider-openai-conversations-track" role="slider" tabindex="0" aria-label="OPENAI Conversations 历史状态" aria-orientation="horizontal" aria-valuemin="1" aria-valuemax="60" aria-valuenow="60" aria-valuetext="等待历史数据"></div>
           <div class="row-status status-unknown" id="provider-openai-conversations-status"><span></span>未知</div>
