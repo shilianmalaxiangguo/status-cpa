@@ -57,8 +57,8 @@
   --track-healthy: #22c55e;
   --track-degraded: #f59e0b;
   --track-critical: #ef4444;
-  --track-unknown: #18181b;
-  --track-unknown-line: #3f3f46;
+  --track-unknown: #e4e4e7;
+  --track-unknown-line: #e4e4e7;
   --alert-text: #fbbf24;
   --toggle-off: #505a51;
   --toggle-shadow: rgba(0, 0, 0, 0.42);
@@ -144,7 +144,7 @@
   --track-healthy: #15894b;
   --track-degraded: #ad6e16;
   --track-critical: #d82c4d;
-  --track-unknown: #e3e6e1;
+  --track-unknown: #e4e4e7;
   --track-unknown-line: #8a9389;
   --alert-text: #765016;
   --toggle-off: #c7ccc4;
