@@ -100,6 +100,111 @@ func TestAIInputIndependentChannelsAndSession(t *testing.T) {
 	}
 }
 
+func TestAIInputSharedReauthenticationBudget(t *testing.T) {
+	for _, bothUnauthorized := range []bool{true, false} {
+		t.Run(fmt.Sprintf("both endpoints unauthorized=%t", bothUnauthorized), func(t *testing.T) {
+			var logins, monitors, groups atomic.Int32
+			now := time.Now().UTC().Truncate(time.Second)
+			body := aiInputTestPayload(
+				aiInputTestChannel(3, "gpt-5.6-sol", "operational", 10, now),
+				aiInputTestChannel(2, "gpt-5.6-sol", "operational", 20, now),
+				aiInputTestChannel(1, "gpt-5.6-sol", "operational", 30, now),
+			)
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/login":
+					logins.Add(1)
+					fmt.Fprint(w, aiInputTestLogin)
+				case "/monitors":
+					read := monitors.Add(1)
+					if bothUnauthorized && read%2 == 1 {
+						w.WriteHeader(http.StatusUnauthorized)
+						return
+					}
+					fmt.Fprint(w, body)
+				case "/groups":
+					read := groups.Add(1)
+					if bothUnauthorized || read%2 == 1 {
+						w.WriteHeader(http.StatusUnauthorized)
+						return
+					}
+					fmt.Fprint(w, aiInputTestGroups)
+				default:
+					t.Errorf("unexpected request: %s", r.URL.Path)
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer s.Close()
+			c := newProviderTestCollector(s.URL)
+			for round := 0; round < 2; round++ {
+				var wg sync.WaitGroup
+				for _, id := range []int64{3, 2, 1} {
+					wg.Add(1)
+					go func(id int64) {
+						defer wg.Done()
+						source := ModelSource{Kind: ModelSourceAIInput, ChannelID: id, Name: fmt.Sprintf("AI INPUT · CodeX 余额-%d", id), Model: "gpt-5.6-sol", URL: s.URL + "/monitors"}
+						check := c.probeModelSource(context.Background(), source, now.Add(time.Duration(round)*time.Minute))
+						if check.Status != model.Healthy {
+							t.Errorf("rate authorization failure changed channel health: %+v", check)
+						}
+						if bothUnauthorized {
+							if check.RateMultiplier != nil || !strings.Contains(check.Detail, "倍率暂不可用") {
+								t.Errorf("unauthorized groups returned a rate: %+v", check)
+							}
+						} else {
+							want := 0.2
+							if id == 1 {
+								want = 0.1
+							}
+							if check.RateMultiplier == nil || *check.RateMultiplier != want {
+								t.Errorf("groups retry did not recover rate: %+v", check)
+							}
+						}
+						encoded, _ := json.Marshal(check)
+						for _, secret := range []string{"test-token", "test-password", "test@example.invalid"} {
+							if strings.Contains(string(encoded), secret) {
+								t.Error("retry result leaked credentials")
+							}
+						}
+					}(id)
+				}
+				wg.Wait()
+				wantMonitors, wantGroups := int32(round+1), int32(2*(round+1))
+				if bothUnauthorized {
+					wantMonitors, wantGroups = wantGroups, wantMonitors
+				}
+				if logins.Load() != int32(round+2) || monitors.Load() != wantMonitors || groups.Load() != wantGroups {
+					t.Fatalf("round %d: logins/monitors/groups = %d/%d/%d; want %d/%d/%d", round, logins.Load(), monitors.Load(), groups.Load(), round+2, wantMonitors, wantGroups)
+				}
+			}
+		})
+	}
+}
+
+func TestAIInputReauthenticationWithZeroTimestamp(t *testing.T) {
+	var logins, reads atomic.Int32
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/login" {
+			logins.Add(1)
+			fmt.Fprint(w, aiInputTestLogin)
+			return
+		}
+		if reads.Add(1) == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		fmt.Fprint(w, aiInputTestGroups)
+	}))
+	defer s.Close()
+	c := newProviderTestCollector(s.URL)
+	rate, err := c.getAIInputRate(context.Background(), time.Time{}, "CodeX 余额-3")
+	if err != nil || rate != 0.2 || logins.Load() != 2 || reads.Load() != 2 {
+		t.Fatalf("zero timestamp must allow one retry: rate=%v err=%v logins=%d reads=%d", rate, err, logins.Load(), reads.Load())
+	}
+}
+
 func TestAIInputRejectsInvalidChannelData(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	valid := aiInputTestChannel(3, "gpt-5.6-sol", "operational", 1200, now)

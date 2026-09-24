@@ -200,7 +200,7 @@ func (c *Collector) getAIInputRate(ctx context.Context, now time.Time, channelNa
 	if !c.aiInputRateCacheAt.Equal(now) || c.aiInputRateCacheURL != endpoint {
 		c.aiInputRateCacheAt, c.aiInputRateCacheURL = now, endpoint
 		c.aiInputRateCache = nil
-		c.aiInputRateCacheErr = c.fetchAIInputRates(ctx, endpoint)
+		c.aiInputRateCacheErr = c.fetchAIInputRates(ctx, endpoint, now)
 	}
 	if c.aiInputRateCacheErr != nil {
 		return 0, c.aiInputRateCacheErr
@@ -232,7 +232,7 @@ func (c *Collector) getAIInputRate(ctx context.Context, now time.Time, channelNa
 	return *rate, nil
 }
 
-func (c *Collector) fetchAIInputRates(ctx context.Context, endpoint string) error {
+func (c *Collector) fetchAIInputRates(ctx context.Context, endpoint string, now time.Time) error {
 	for attempt := 0; attempt < 2; attempt++ {
 		token, err := c.getAIInputToken(ctx)
 		if err != nil {
@@ -247,7 +247,9 @@ func (c *Collector) fetchAIInputRates(ctx context.Context, endpoint string) erro
 			}
 			return err
 		}
-		c.aiInputToken = ""
+		if !c.reauthenticateAIInput(now) {
+			return err
+		}
 	}
 	return errors.New("AI INPUT rate authorization failed")
 }
@@ -727,7 +729,7 @@ func (c *Collector) getAIInputChannelMonitors(ctx context.Context, endpoint stri
 	if !c.aiInputCacheAt.Equal(now) || c.aiInputCacheURL != endpoint {
 		c.aiInputCacheAt, c.aiInputCacheURL = now, endpoint
 		c.aiInputCache = nil
-		c.aiInputCacheErr = c.fetchAIInputChannelMonitors(ctx, endpoint, &c.aiInputCache)
+		c.aiInputCacheErr = c.fetchAIInputChannelMonitors(ctx, endpoint, now, &c.aiInputCache)
 	}
 	if c.aiInputCacheErr != nil {
 		return c.aiInputCacheErr
@@ -736,7 +738,7 @@ func (c *Collector) getAIInputChannelMonitors(ctx context.Context, endpoint stri
 }
 
 // Called with aiInputAuthMu held.
-func (c *Collector) fetchAIInputChannelMonitors(ctx context.Context, endpoint string, target any) error {
+func (c *Collector) fetchAIInputChannelMonitors(ctx context.Context, endpoint string, now time.Time, target any) error {
 	for attempt := 0; attempt < 2; attempt++ {
 		token, err := c.getAIInputToken(ctx)
 		if err != nil {
@@ -747,8 +749,7 @@ func (c *Collector) fetchAIInputChannelMonitors(ctx context.Context, endpoint st
 		if !errors.As(err, &httpErr) || httpErr.status != http.StatusUnauthorized {
 			return err
 		}
-		c.aiInputToken = ""
-		if attempt == 1 {
+		if !c.reauthenticateAIInput(now) {
 			return err
 		}
 	}
@@ -788,6 +789,17 @@ func (c *Collector) getAIInputToken(ctx context.Context) (string, error) {
 	c.aiInputToken = payload.Data.AccessToken
 	c.aiInputTokenExp = time.Now().Add(ttl)
 	return c.aiInputToken, nil
+}
+
+// Called with aiInputAuthMu held. Monitor and groups share one re-login per collection.
+func (c *Collector) reauthenticateAIInput(now time.Time) bool {
+	if c.aiInputReauthAt != nil && c.aiInputReauthAt.Equal(now) {
+		return false
+	}
+	c.aiInputReauthAt = &now
+	c.aiInputToken = ""
+	c.aiInputTokenExp = time.Time{}
+	return true
 }
 
 func (c *Collector) getJSON(ctx context.Context, endpoint string, target any, bearerToken string) error {

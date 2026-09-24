@@ -63,6 +63,7 @@ type Collector struct {
 	aiInputAuthMu       sync.Mutex
 	aiInputToken        string
 	aiInputTokenExp     time.Time
+	aiInputReauthAt     *time.Time
 	aiInputCacheAt      time.Time
 	aiInputCacheURL     string
 	aiInputCache        json.RawMessage
