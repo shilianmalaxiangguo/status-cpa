@@ -32,7 +32,7 @@
   const providers = [
     ...[3, 2, 1].map((id) => ({
       id: `provider-ai-input-channel-${id}`, providerID: "provider-ai-input",
-      label: `AI INPUT · CodeX 余额-${id}`, model: "gpt-5.6-sol", latencyLabel: "对话延迟",
+      label: `AI INPUT · CodeX 余额-${id}`, model: "gpt-5.6-sol", latencyLabel: "对话延迟", rate: true,
     })),
     ...[
       { id: "provider-pipio", label: "PIPIO", latencyLabel: "延迟", noLatency: "未提供" },
@@ -322,6 +322,8 @@
       $(`${provider.id}-detail`).textContent = check.detail || "尚无模型状态数据";
       $(`${provider.id}-latency`).textContent = check.latencyMs ? `${formatLatency(check.latencyMs)} ms` : status !== "unknown" && provider.noLatency ? provider.noLatency : "--";
       $(`${provider.id}-uptime`).textContent = checkUptime(history, provider.id);
+      const rateElement = $(`${provider.id}-rate`);
+      if (rateElement) rateElement.textContent = check.rateMultiplier == null ? "--" : `${Number(check.rateMultiplier).toFixed(2)}×`;
       renderRowStatus($(`${provider.id}-status`), status);
       renderCheckTrack($(`${provider.id}-track`), history, provider);
       summary.push(`${provider.label} ${labels[status]}`);

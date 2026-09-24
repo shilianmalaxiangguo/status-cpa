@@ -289,6 +289,7 @@ func staleSnapshot(snapshot model.Snapshot) model.Snapshot {
 	for i := range stale.Checks {
 		stale.Checks[i].Status = model.Unknown
 		stale.Checks[i].LatencyMS = 0
+		stale.Checks[i].RateMultiplier = nil
 		stale.Checks[i].Detail = "最新探测数据已过期"
 	}
 	return stale

@@ -38,13 +38,14 @@ var edgeHosts = []string{
 }
 
 type Config struct {
-	MetricsURL      string
-	Endpoints       []Endpoint
-	ModelSources    []ModelSource
-	Timeout         time.Duration
-	AIInputEmail    string
-	AIInputPassword string
-	AIInputLoginURL string
+	MetricsURL       string
+	Endpoints        []Endpoint
+	ModelSources     []ModelSource
+	Timeout          time.Duration
+	AIInputEmail     string
+	AIInputPassword  string
+	AIInputLoginURL  string
+	AIInputGroupsURL string
 }
 
 type Endpoint struct {
@@ -56,16 +57,20 @@ type Endpoint struct {
 }
 
 type Collector struct {
-	config          Config
-	client          *http.Client
-	mu              sync.Mutex
-	aiInputAuthMu   sync.Mutex
-	aiInputToken    string
-	aiInputTokenExp time.Time
-	aiInputCacheAt  time.Time
-	aiInputCacheURL string
-	aiInputCache    json.RawMessage
-	aiInputCacheErr error
+	config              Config
+	client              *http.Client
+	mu                  sync.Mutex
+	aiInputAuthMu       sync.Mutex
+	aiInputToken        string
+	aiInputTokenExp     time.Time
+	aiInputCacheAt      time.Time
+	aiInputCacheURL     string
+	aiInputCache        json.RawMessage
+	aiInputCacheErr     error
+	aiInputRateCacheAt  time.Time
+	aiInputRateCacheURL string
+	aiInputRateCache    json.RawMessage
+	aiInputRateCacheErr error
 }
 
 func New(config Config) *Collector {

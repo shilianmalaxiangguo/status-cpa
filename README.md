@@ -33,6 +33,9 @@ database server, or a package manager on the target host.
   The current status must match the latest timeline record and be at most three
   minutes old. Missing channels, mismatched models, invalid data or unavailable
   authentication produce unknown. There is no fallback to the public status API.
+  The displayed channel multiplier comes from the authenticated
+  `/api/v1/groups/available?timezone=Asia%2FShanghai` endpoint's
+  `rate_multiplier`, matched by channel name and shown independently as `倍率`.
 - Exact `gpt-6-astra`, `gpt-5.6-sol`, and `gpt-5.6-terra` status published by
   PIPIO and KRILL. KRILL uses `https://www.krill-code.com/status`.
   Missing, stale, ambiguous, or unreadable model data is reported as unknown.

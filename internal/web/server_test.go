@@ -136,6 +136,9 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	if count := strings.Count(index, `<span>可用率</span>`); count != 9 {
 		t.Fatalf("expected nine independent model availability labels, got %d", count)
 	}
+	if count := strings.Count(index, `<span>倍率</span>`); count != 3 {
+		t.Fatalf("expected three AI INPUT multiplier labels, got %d", count)
+	}
 	if strings.Contains(index, `data-range=`) {
 		t.Fatal("expected historical range switch to be removed")
 	}

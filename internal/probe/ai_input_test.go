@@ -16,9 +16,10 @@ import (
 )
 
 const aiInputTestLogin = `{"code":0,"data":{"access_token":"test-token","expires_in":3600}}`
+const aiInputTestGroups = `{"code":0,"data":[{"name":"CodeX 余额-3","rate_multiplier":0.2},{"name":"CodeX 余额-2","rate_multiplier":0.2},{"name":"CodeX 余额-1","rate_multiplier":0.1}]}`
 
 func newProviderTestCollector(baseURL string) *Collector {
-	return New(Config{Timeout: time.Second, AIInputEmail: "test@example.invalid", AIInputPassword: "test-password", AIInputLoginURL: baseURL + "/login"})
+	return New(Config{Timeout: time.Second, AIInputEmail: "test@example.invalid", AIInputPassword: "test-password", AIInputLoginURL: baseURL + "/login", AIInputGroupsURL: baseURL + "/groups"})
 }
 
 func aiInputTestChannel(id int, model, status string, latency float64, at time.Time) string {
@@ -48,6 +49,14 @@ func TestAIInputIndependentChannelsAndSession(t *testing.T) {
 			fmt.Fprint(w, aiInputTestLogin)
 			return
 		}
+		if r.URL.Path == "/groups" {
+			reads.Add(1)
+			if r.Header.Get("Authorization") != "Bearer test-token" {
+				t.Error("groups request missing bearer token")
+			}
+			fmt.Fprint(w, aiInputTestGroups)
+			return
+		}
 		reads.Add(1)
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			t.Error("monitor request missing bearer token")
@@ -61,9 +70,10 @@ func TestAIInputIndependentChannelsAndSession(t *testing.T) {
 		wg.Add(1)
 		go func(i int, id int64) {
 			defer wg.Done()
-			source := ModelSource{ID: fmt.Sprintf("provider-ai-input-channel-%d", id), Kind: ModelSourceAIInput, ChannelID: id, Model: "gpt-5.6-sol", URL: server.URL}
+			source := ModelSource{ID: fmt.Sprintf("provider-ai-input-channel-%d", id), Name: fmt.Sprintf("AI INPUT · CodeX 余额-%d", id), Kind: ModelSourceAIInput, ChannelID: id, Model: "gpt-5.6-sol", URL: server.URL}
 			check := c.probeModelSource(context.Background(), source, now)
-			if check.ID != source.ID || check.Status != []model.Status{model.Critical, model.Healthy, model.Degraded}[i] || check.LatencyMS != []float64{3511, 1492, 11211}[i] {
+			wantRates := []float64{0.2, 0.2, 0.1}
+			if check.ID != source.ID || check.Status != []model.Status{model.Critical, model.Healthy, model.Degraded}[i] || check.LatencyMS != []float64{3511, 1492, 11211}[i] || check.RateMultiplier == nil || *check.RateMultiplier != wantRates[i] {
 				t.Errorf("channel status or latency crossed IDs: %+v", check)
 			}
 			encoded, _ := json.Marshal(check)
@@ -75,17 +85,17 @@ func TestAIInputIndependentChannelsAndSession(t *testing.T) {
 		}(i, id)
 	}
 	wg.Wait()
-	if logins.Load() != 1 || reads.Load() != 1 {
-		t.Fatalf("wanted one login and monitor read, got %d/%d", logins.Load(), reads.Load())
+	if logins.Load() != 1 || reads.Load() != 2 {
+		t.Fatalf("wanted one login and monitor/groups reads, got %d/%d", logins.Load(), reads.Load())
 	}
 	source := ModelSource{Kind: ModelSourceAIInput, ChannelID: 2, Model: "gpt-5.6-sol", URL: server.URL}
 	c.probeModelSource(context.Background(), source, now.Add(time.Minute))
-	if logins.Load() != 1 || reads.Load() != 2 {
+	if logins.Load() != 1 || reads.Load() != 4 {
 		t.Fatal("next collection must reuse token but refetch monitor data")
 	}
 	c.aiInputTokenExp = time.Now().Add(-time.Second)
 	c.probeModelSource(context.Background(), source, now.Add(2*time.Minute))
-	if logins.Load() != 2 || reads.Load() != 3 {
+	if logins.Load() != 2 || reads.Load() != 6 {
 		t.Fatal("expired token must be replaced")
 	}
 }
@@ -186,7 +196,9 @@ func TestAIInputAuthenticationFailures(t *testing.T) {
 			switch mode {
 			case "missing":
 				wantLogins = 0
-			case "expired once", "always unauthorized":
+			case "expired once":
+				wantLogins, wantReads = 2, 3
+			case "always unauthorized":
 				wantLogins, wantReads = 2, 2
 			case "forbidden", "HTML":
 				wantReads = 1

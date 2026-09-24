@@ -12,16 +12,17 @@ const (
 )
 
 type Check struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Protocol    string  `json:"protocol"`
-	Status      Status  `json:"status"`
-	LatencyMS   float64 `json:"latencyMs,omitempty"`
-	Value       float64 `json:"value,omitempty"`
-	ValueLabel  string  `json:"valueLabel,omitempty"`
-	Target      string  `json:"target,omitempty"`
-	Detail      string  `json:"detail"`
-	FailureCode string  `json:"failureCode,omitempty"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Protocol       string   `json:"protocol"`
+	Status         Status   `json:"status"`
+	LatencyMS      float64  `json:"latencyMs,omitempty"`
+	RateMultiplier *float64 `json:"rateMultiplier,omitempty"`
+	Value          float64  `json:"value,omitempty"`
+	ValueLabel     string   `json:"valueLabel,omitempty"`
+	Target         string   `json:"target,omitempty"`
+	Detail         string   `json:"detail"`
+	FailureCode    string   `json:"failureCode,omitempty"`
 }
 
 type Snapshot struct {

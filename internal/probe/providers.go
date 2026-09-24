@@ -23,6 +23,7 @@ const (
 	ciiiTargetMonitorName                = "Ciii-codex gpt-5.6-sol"
 	openAIConversationsComponentID       = "01JMXBNJXGV1T5GT2M9XA83XNG"
 	aiInputLoginURL                      = "https://ai.input.im/api/v1/auth/login"
+	aiInputGroupsURL                     = "https://ai.input.im/api/v1/groups/available?timezone=Asia%2FShanghai"
 	maxModelSourceMessageRunes           = 240
 	maxModelSourceBody             int64 = 2 << 20
 )
@@ -176,8 +177,79 @@ func (c *Collector) probeAIInput(ctx context.Context, source ModelSource, now ti
 	if selected.PrimaryLatencyMS != nil && *selected.PrimaryLatencyMS > 0 {
 		check.LatencyMS = *selected.PrimaryLatencyMS
 	}
+	channelName := source.Name
+	if _, name, ok := strings.Cut(channelName, " · "); ok {
+		channelName = name
+	}
+	if rate, err := c.getAIInputRate(ctx, now, channelName); err == nil {
+		check.RateMultiplier = &rate
+	} else {
+		check.Detail += "；倍率暂不可用"
+	}
 	check.Detail += "；延迟为对话延迟，非端点 PING"
 	return check
+}
+
+func (c *Collector) getAIInputRate(ctx context.Context, now time.Time, channelName string) (float64, error) {
+	c.aiInputAuthMu.Lock()
+	defer c.aiInputAuthMu.Unlock()
+	endpoint := strings.TrimSpace(c.config.AIInputGroupsURL)
+	if endpoint == "" {
+		endpoint = aiInputGroupsURL
+	}
+	if !c.aiInputRateCacheAt.Equal(now) || c.aiInputRateCacheURL != endpoint {
+		c.aiInputRateCacheAt, c.aiInputRateCacheURL = now, endpoint
+		c.aiInputRateCache = nil
+		c.aiInputRateCacheErr = c.fetchAIInputRates(ctx, endpoint)
+	}
+	if c.aiInputRateCacheErr != nil {
+		return 0, c.aiInputRateCacheErr
+	}
+	var payload struct {
+		Code *int `json:"code"`
+		Data []struct {
+			Name string   `json:"name"`
+			Rate *float64 `json:"rate_multiplier"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(c.aiInputRateCache, &payload); err != nil {
+		return 0, err
+	}
+	var rate *float64
+	for _, group := range payload.Data {
+		if group.Name != channelName {
+			continue
+		}
+		if rate != nil || group.Rate == nil || *group.Rate < 0 {
+			return 0, errors.New("AI INPUT 倍率记录不唯一或无效")
+		}
+		value := *group.Rate
+		rate = &value
+	}
+	if payload.Code == nil || *payload.Code != 0 || rate == nil {
+		return 0, errors.New("AI INPUT 未返回该渠道倍率")
+	}
+	return *rate, nil
+}
+
+func (c *Collector) fetchAIInputRates(ctx context.Context, endpoint string) error {
+	for attempt := 0; attempt < 2; attempt++ {
+		token, err := c.getAIInputToken(ctx)
+		if err != nil {
+			return err
+		}
+		var raw json.RawMessage
+		err = c.getJSON(ctx, endpoint, &raw, token)
+		var httpErr modelSourceHTTPError
+		if !errors.As(err, &httpErr) || httpErr.status != http.StatusUnauthorized {
+			if err == nil {
+				c.aiInputRateCache = raw
+			}
+			return err
+		}
+		c.aiInputToken = ""
+	}
+	return errors.New("AI INPUT rate authorization failed")
 }
 
 func (c *Collector) probePIPIO(ctx context.Context, source ModelSource, check model.Check) model.Check {

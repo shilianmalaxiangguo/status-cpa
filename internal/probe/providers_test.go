@@ -453,6 +453,10 @@ func TestProbeModelSourcesRejectInvalidOrStaleData(t *testing.T) {
 					fmt.Fprint(w, aiInputTestLogin)
 					return
 				}
+				if r.URL.Path == "/groups" {
+					fmt.Fprint(w, aiInputTestGroups)
+					return
+				}
 				contentType := test.contentType
 				if contentType == "" {
 					contentType = "application/json"
@@ -542,6 +546,10 @@ func newJSONServer(body, metadataBody string) *httptest.Server {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if r.URL.Path == "/login" {
 			fmt.Fprint(w, aiInputTestLogin)
+			return
+		}
+		if r.URL.Path == "/groups" {
+			fmt.Fprint(w, aiInputTestGroups)
 			return
 		}
 		if r.URL.Path == "/metadata" {
