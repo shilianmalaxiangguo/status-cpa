@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=simple
 User=status-cpa
 Group=status-cpa
+EnvironmentFile=-/etc/status-cpa/ai-input.env
 ExecStart=/opt/status-cpa/status-cpa -listen 0.0.0.0:19090 -data /var/lib/status-cpa/history.jsonl -interval 60s -retention 168h
 Restart=on-failure
 RestartSec=5s

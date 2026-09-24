@@ -51,8 +51,10 @@ func run() error {
 		return fmt.Errorf("initialize history: %w", err)
 	}
 	collector := probe.New(probe.Config{
-		MetricsURL: cfg.metricsURL,
-		Timeout:    5 * time.Second,
+		MetricsURL:      cfg.metricsURL,
+		Timeout:         5 * time.Second,
+		AIInputEmail:    os.Getenv("STATUS_CPA_AI_INPUT_EMAIL"),
+		AIInputPassword: os.Getenv("STATUS_CPA_AI_INPUT_PASSWORD"),
 		Endpoints: []probe.Endpoint{
 			{ID: "local-api", Name: "CLIProxyAPI 本机", URL: "http://127.0.0.1:8317/", ExpectedStatus: []int{http.StatusOK}, Protocol: "origin"},
 			{ID: "local-panel", Name: "CPA Manager Plus 本机", URL: "http://127.0.0.1:18317/management.html", ExpectedStatus: []int{http.StatusOK}, Protocol: "origin"},
@@ -109,8 +111,16 @@ func run() error {
 }
 
 func defaultModelSources() []probe.ModelSource {
+	sources := make([]probe.ModelSource, 0, 9)
+	for _, id := range []int64{3, 2, 1} {
+		sources = append(sources, probe.ModelSource{
+			ID:    fmt.Sprintf("provider-ai-input-channel-%d", id),
+			Name:  fmt.Sprintf("AI INPUT · CodeX 余额-%d", id),
+			Model: "gpt-5.6-sol", ChannelID: id,
+			URL: "https://ai.input.im/api/v1/channel-monitors", Kind: probe.ModelSourceAIInput,
+		})
+	}
 	providers := []probe.ModelSource{
-		{ID: "provider-ai-input", Name: "AI INPUT", URL: "https://status.input.im/api/status", Kind: probe.ModelSourceAIInput},
 		{ID: "provider-pipio", Name: "PIPIO", URL: "https://pipio.io/api/uptime/status", Kind: probe.ModelSourcePIPIO},
 		{ID: "provider-krill", Name: "KRILL", URL: "https://www.krill-code.com/api/public/channel-status?hours=24", Kind: probe.ModelSourceKrill},
 	}
@@ -119,7 +129,6 @@ func defaultModelSources() []probe.ModelSource {
 		{"gpt-5.6-sol", ""}, // Preserve the existing sol history IDs.
 		{"gpt-5.6-terra", "-terra"},
 	}
-	sources := make([]probe.ModelSource, 0, len(providers)*len(models))
 	for _, provider := range providers {
 		for _, target := range models {
 			source := provider

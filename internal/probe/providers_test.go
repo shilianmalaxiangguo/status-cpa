@@ -34,10 +34,10 @@ func TestProbeModelSources(t *testing.T) {
 		{
 			name:        "AI INPUT exact model health and latency",
 			kind:        ModelSourceAIInput,
-			body:        fmt.Sprintf(`{"generated_at":%d,"services":[{"model":"gpt-5.6-sol","uptime_pct":98.33,"last":{"ts":%d,"ok":true,"latency_ms":2820}}]}`, now.Add(-10*time.Second).Unix(), now.Add(-20*time.Second).Unix()),
+			body:        aiInputTestPayload(aiInputTestChannel(1, "gpt-5.6-sol", "operational", 2820, now.Add(-20*time.Second))),
 			wantStatus:  model.Healthy,
 			wantLatency: 2820,
-			wantDetail:  "最近探测正常",
+			wantDetail:  "渠道探测正常",
 		},
 		{
 			name:       "PIPIO exact model outage",
@@ -195,7 +195,7 @@ func TestProbeModelSources(t *testing.T) {
 			t.Parallel()
 			server := newJSONServer(test.body, test.metadataBody)
 			defer server.Close()
-			collector := New(Config{Timeout: time.Second})
+			collector := newProviderTestCollector(server.URL)
 			metadataURL := ""
 			if test.kind == ModelSourceCIII || test.kind == ModelSourceJiMuAI {
 				metadataURL = server.URL + "/metadata"
@@ -206,6 +206,7 @@ func TestProbeModelSources(t *testing.T) {
 				URL:         server.URL,
 				MetadataURL: metadataURL,
 				Kind:        test.kind,
+				ChannelID:   1,
 			}, now)
 			if check.Status != test.wantStatus || check.LatencyMS != test.wantLatency {
 				t.Fatalf("expected %s at %.0f ms, got %+v", test.wantStatus, test.wantLatency, check)
@@ -231,18 +232,6 @@ func TestThreeModelsRemainIndependent(t *testing.T) {
 		statuses  []model.Status
 		latencies []float64
 	}{
-		{
-			name: "INPUT",
-			kind: ModelSourceAIInput,
-			body: fmt.Sprintf(`{"generated_at":%d,"services":[
-				{"model":"gpt-5.6-terra","last":{"ts":%d,"ok":true,"latency_ms":303}},
-				{"model":"gpt-6-astra","last":{"ts":%d,"ok":false,"latency_ms":null}},
-				{"model":"gpt-5.6-sol","last":{"ts":%d,"ok":true,"latency_ms":202}},
-				{"model":"gpt-6-sol","last":{"ts":%d,"ok":false}}
-			]}`, now.Unix(), now.Unix(), now.Unix(), now.Unix(), now.Unix()),
-			statuses:  []model.Status{model.Critical, model.Healthy, model.Healthy},
-			latencies: []float64{0, 202, 303},
-		},
 		{
 			name: "PIPIO",
 			kind: ModelSourcePIPIO,
@@ -278,7 +267,7 @@ func TestThreeModelsRemainIndependent(t *testing.T) {
 				t.Run(target, func(t *testing.T) {
 					server := newJSONServer(test.body, "")
 					defer server.Close()
-					collector := New(Config{Timeout: time.Second})
+					collector := newProviderTestCollector(server.URL)
 					check := collector.probeModelSource(context.Background(), ModelSource{
 						ID: "test-" + target, Name: test.name, Model: target, URL: server.URL, Kind: test.kind,
 					}, now)
@@ -339,7 +328,7 @@ func TestProbeModelSourcesRejectInvalidOrStaleData(t *testing.T) {
 		{
 			name:     "AI INPUT stale sample",
 			kind:     ModelSourceAIInput,
-			body:     fmt.Sprintf(`{"generated_at":%d,"services":[{"model":"gpt-5.6-sol","last":{"ts":%d,"ok":true,"latency_ms":100}}]}`, now.Add(-4*time.Minute).Unix(), now.Add(-4*time.Minute).Unix()),
+			body:     aiInputTestPayload(aiInputTestChannel(1, "gpt-5.6-sol", "operational", 100, now.Add(-4*time.Minute))),
 			wantCode: "source_stale",
 		},
 		{
@@ -459,6 +448,11 @@ func TestProbeModelSourcesRejectInvalidOrStaleData(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/login" {
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprint(w, aiInputTestLogin)
+					return
+				}
 				contentType := test.contentType
 				if contentType == "" {
 					contentType = "application/json"
@@ -477,7 +471,7 @@ func TestProbeModelSourcesRejectInvalidOrStaleData(t *testing.T) {
 				_, _ = fmt.Fprint(w, body)
 			}))
 			defer server.Close()
-			collector := New(Config{Timeout: time.Second})
+			collector := newProviderTestCollector(server.URL)
 			metadataURL := ""
 			if test.kind == ModelSourceCIII || test.kind == ModelSourceJiMuAI {
 				metadataURL = server.URL + "/metadata"
@@ -488,6 +482,7 @@ func TestProbeModelSourcesRejectInvalidOrStaleData(t *testing.T) {
 				URL:         server.URL,
 				MetadataURL: metadataURL,
 				Kind:        test.kind,
+				ChannelID:   1,
 			}, now)
 			if check.Status != model.Unknown || check.FailureCode != test.wantCode {
 				t.Fatalf("expected unknown with %s, got %+v", test.wantCode, check)
@@ -545,6 +540,10 @@ func TestBuildSnapshotKeepsModelSourcesOutOfNetworkStatus(t *testing.T) {
 func newJSONServer(body, metadataBody string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.URL.Path == "/login" {
+			fmt.Fprint(w, aiInputTestLogin)
+			return
+		}
 		if r.URL.Path == "/metadata" {
 			if metadataBody == "" {
 				metadataBody = ciiiModelMetadata

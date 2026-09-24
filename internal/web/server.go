@@ -221,7 +221,8 @@ func withoutObsoleteChecks(snapshots []model.Snapshot) []model.Snapshot {
 
 func obsoleteProvider(id string) bool {
 	switch id {
-	case "provider-ciii", "provider-jimu-ai", "provider-openai-responses", "provider-openai-conversations":
+	case "provider-ciii", "provider-jimu-ai", "provider-openai-responses", "provider-openai-conversations",
+		"provider-ai-input", "provider-ai-input-astra", "provider-ai-input-terra":
 		return true
 	default:
 		return false

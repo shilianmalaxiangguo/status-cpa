@@ -27,7 +27,7 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 		Timestamp: time.Now().UTC(),
 		Overall:   model.Healthy,
 		Connector: model.Connector{Mode: "auto", Protocol: "quic", Connections: 4, Status: model.Healthy},
-		Checks:    []model.Check{{ID: "provider-ai-input", Name: "AI INPUT", Status: model.Healthy, LatencyMS: 1200}},
+		Checks:    []model.Check{{ID: "provider-ai-input-channel-2", Name: "AI INPUT", Status: model.Healthy, LatencyMS: 1200}},
 	}
 	if err := store.Append(snapshot); err != nil {
 		t.Fatal(err)
@@ -62,7 +62,7 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	if response.Current.Connector.Mode != "auto" || response.Current.Connector.Protocol != "quic" {
 		t.Fatalf("expected auto mode with active QUIC, got %+v", response.Current.Connector)
 	}
-	if checkStatus(response.Current.Checks, "provider-ai-input") != model.Healthy {
+	if checkStatus(response.Current.Checks, "provider-ai-input-channel-2") != model.Healthy {
 		t.Fatalf("expected provider check in API response, got %+v", response.Current.Checks)
 	}
 	if response.Range != "60m" || len(response.History) != statusBuckets {
@@ -113,22 +113,24 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 		}
 	}
 	previousProvider := -1
-	for _, provider := range []string{"provider-ai-input", "provider-pipio", "provider-krill"} {
-		for _, suffix := range []string{"-astra", "", "-terra"} {
-			id := provider + suffix
-			position := strings.Index(index, `id="`+id+`-row"`)
-			if position <= previousProvider {
-				t.Fatalf("expected model row %s after the previous row", id)
-			}
-			previousProvider = position
-			if !strings.Contains(index, `<p class="sr-only" id="`+id+`-detail">`) {
-				t.Fatalf("expected model row %s detail to be visually hidden", id)
-			}
+	for _, id := range []string{"provider-ai-input-channel-3", "provider-ai-input-channel-2", "provider-ai-input-channel-1", "provider-pipio-astra", "provider-pipio", "provider-pipio-terra", "provider-krill-astra", "provider-krill", "provider-krill-terra"} {
+		position := strings.Index(index, `id="`+id+`-row"`)
+		if position <= previousProvider {
+			t.Fatalf("expected row %s after the previous row", id)
+		}
+		previousProvider = position
+		if !strings.Contains(index, `<p class="sr-only" id="`+id+`-detail">`) {
+			t.Fatalf("expected row %s detail to be visually hidden", id)
 		}
 	}
 	for _, target := range []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra"} {
-		if strings.Count(index, `<h4>`+target+`</h4>`) != 3 {
-			t.Fatalf("expected %s exactly once per provider", target)
+		if strings.Count(index, `<h4>`+target+`</h4>`) != 2 {
+			t.Fatalf("expected %s once for PIPIO and KRILL", target)
+		}
+	}
+	for _, channel := range []string{"CodeX 余额-3", "CodeX 余额-2", "CodeX 余额-1"} {
+		if strings.Count(index, `<h4>`+channel+`</h4>`) != 1 {
+			t.Fatalf("expected one INPUT row for %s", channel)
 		}
 	}
 	if count := strings.Count(index, `<span>可用率</span>`); count != 9 {
@@ -214,21 +216,21 @@ func TestStatusAPIFiltersRetiredProviderHistory(t *testing.T) {
 }
 
 func TestRetiredFilterPreservesStoredAndActiveModels(t *testing.T) {
-	ids := []string{"provider-ciii", "provider-jimu-ai", "provider-openai-responses", "provider-openai-conversations", "provider-ai-input", "provider-ai-input-astra", "provider-ai-input-terra", "provider-pipio", "provider-krill", "local-api"}
+	ids := []string{"provider-ciii", "provider-jimu-ai", "provider-openai-responses", "provider-openai-conversations", "provider-ai-input", "provider-ai-input-astra", "provider-ai-input-terra", "provider-ai-input-channel-3", "provider-ai-input-channel-2", "provider-ai-input-channel-1", "provider-pipio", "provider-krill", "local-api"}
 	snapshot := model.Snapshot{Timestamp: time.Now(), Overall: model.Healthy}
 	for _, id := range ids {
 		snapshot.Checks = append(snapshot.Checks, model.Check{ID: id, Status: model.Critical})
 	}
 	filtered := withoutObsoleteChecks([]model.Snapshot{snapshot})
-	if len(snapshot.Checks) != len(ids) || len(filtered[0].Checks) != len(ids)-4 {
+	if len(snapshot.Checks) != len(ids) || len(filtered[0].Checks) != len(ids)-7 {
 		t.Fatalf("filter must preserve stored snapshot and all active models: %+v", filtered)
 	}
-	for _, id := range ids[:4] {
+	for _, id := range ids[:7] {
 		if hasCheck(filtered[0].Checks, id) {
 			t.Fatalf("retired check survived: %s", id)
 		}
 	}
-	for _, id := range ids[4:] {
+	for _, id := range ids[7:] {
 		if !hasCheck(filtered[0].Checks, id) {
 			t.Fatalf("active check lost: %s", id)
 		}
@@ -320,7 +322,7 @@ func TestStatusAPIMarksStaleSnapshotUnknown(t *testing.T) {
 		Connector: model.Connector{Mode: "quic", Protocol: "quic", Status: model.Healthy, Connections: 4},
 		Checks: []model.Check{
 			{ID: "http2-edge", Status: model.Healthy, LatencyMS: 100},
-			{ID: "provider-ai-input", Status: model.Healthy, LatencyMS: 1200},
+			{ID: "provider-ai-input-channel-2", Status: model.Healthy, LatencyMS: 1200},
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -335,7 +337,7 @@ func TestStatusAPIMarksStaleSnapshotUnknown(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if !response.Stale || response.Current.Connector.Status != model.Unknown || response.Current.Connector.Mode != "unknown" || response.Current.Connector.Protocol != "unknown" || checkStatus(response.Current.Checks, "http2-edge") != model.Unknown || checkStatus(response.Current.Checks, "provider-ai-input") != model.Unknown {
+	if !response.Stale || response.Current.Connector.Status != model.Unknown || response.Current.Connector.Mode != "unknown" || response.Current.Connector.Protocol != "unknown" || checkStatus(response.Current.Checks, "http2-edge") != model.Unknown || checkStatus(response.Current.Checks, "provider-ai-input-channel-2") != model.Unknown {
 		t.Fatalf("expected stale current state to be unknown, got %+v", response)
 	}
 }

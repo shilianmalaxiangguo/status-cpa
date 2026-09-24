@@ -22,6 +22,7 @@ const (
 	ciiiTargetMonitorKey                 = "13"
 	ciiiTargetMonitorName                = "Ciii-codex gpt-5.6-sol"
 	openAIConversationsComponentID       = "01JMXBNJXGV1T5GT2M9XA83XNG"
+	aiInputLoginURL                      = "https://ai.input.im/api/v1/auth/login"
 	maxModelSourceMessageRunes           = 240
 	maxModelSourceBody             int64 = 2 << 20
 )
@@ -41,6 +42,7 @@ type ModelSource struct {
 	ID          string
 	Name        string
 	Model       string
+	ChannelID   int64
 	URL         string
 	MetadataURL string
 	Kind        ModelSourceKind
@@ -88,60 +90,93 @@ func (c *Collector) probeModelSource(ctx context.Context, source ModelSource, no
 }
 
 func (c *Collector) probeAIInput(ctx context.Context, source ModelSource, now time.Time, check model.Check) model.Check {
-	targetModelName := source.Model
+	if strings.TrimSpace(c.config.AIInputEmail) == "" || strings.TrimSpace(c.config.AIInputPassword) == "" {
+		check.FailureCode = "credentials_missing"
+		check.Detail = "AI INPUT 登录凭证未配置"
+		return check
+	}
+	type sample struct {
+		Status    string `json:"status"`
+		CheckedAt string `json:"checked_at"`
+	}
+	type channel struct {
+		ID               int64    `json:"id"`
+		Provider         string   `json:"provider"`
+		PrimaryModel     string   `json:"primary_model"`
+		PrimaryStatus    string   `json:"primary_status"`
+		PrimaryLatencyMS *float64 `json:"primary_latency_ms"`
+		Timeline         []sample `json:"timeline"`
+	}
 	payload := struct {
-		GeneratedAt int64 `json:"generated_at"`
-		Services    []struct {
-			Model     string  `json:"model"`
-			UptimePct float64 `json:"uptime_pct"`
-			Last      struct {
-				Timestamp int64   `json:"ts"`
-				OK        *bool   `json:"ok"`
-				LatencyMS float64 `json:"latency_ms"`
-			} `json:"last"`
-		} `json:"services"`
+		Code *int `json:"code"`
+		Data struct {
+			Items []channel `json:"items"`
+		} `json:"data"`
 	}{}
-	if err := c.getModelSourceJSON(ctx, source.URL, &payload); err != nil {
+	if err := c.getAIInputChannelMonitors(ctx, source.URL, now, &payload); err != nil {
 		return unreadableModelSource(check, source.Name, err)
 	}
-
-	var service *struct {
-		Model     string  `json:"model"`
-		UptimePct float64 `json:"uptime_pct"`
-		Last      struct {
-			Timestamp int64   `json:"ts"`
-			OK        *bool   `json:"ok"`
-			LatencyMS float64 `json:"latency_ms"`
-		} `json:"last"`
+	if payload.Code == nil || *payload.Code != 0 {
+		return invalidModelSource(check, "AI INPUT 渠道状态接口未返回成功")
 	}
+	var selected *channel
 	matches := 0
-	for i := range payload.Services {
-		if payload.Services[i].Model == targetModelName {
-			service = &payload.Services[i]
+	for i := range payload.Data.Items {
+		if payload.Data.Items[i].ID == source.ChannelID {
+			selected = &payload.Data.Items[i]
 			matches++
 		}
 	}
-	if matches != 1 || service == nil || service.Last.OK == nil {
-		return invalidModelSource(check, "AI INPUT 没有唯一、完整的 "+targetModelName+" 状态")
+	if source.ChannelID <= 0 || matches != 1 || selected == nil {
+		return invalidModelSource(check, "AI INPUT 没有唯一匹配的渠道记录")
 	}
-	generatedAt := time.Unix(payload.GeneratedAt, 0)
-	lastAt := time.Unix(service.Last.Timestamp, 0)
-	if !freshModelSourceTime(generatedAt, now, 3*time.Minute) || !freshModelSourceTime(lastAt, now, 3*time.Minute) {
+	if selected.Provider != "openai" || selected.PrimaryModel != source.Model || len(selected.Timeline) == 0 {
+		return invalidModelSource(check, "AI INPUT 渠道探针模型不匹配或探测记录缺失")
+	}
+	var latestAt time.Time
+	var latestStatus string
+	for _, point := range selected.Timeline {
+		at, err := time.Parse(time.RFC3339, point.CheckedAt)
+		if err != nil {
+			return invalidModelSource(check, "AI INPUT 渠道探测时间格式无效")
+		}
+		if at.After(latestAt) {
+			latestAt, latestStatus = at, point.Status
+		}
+	}
+	for _, point := range selected.Timeline {
+		at, _ := time.Parse(time.RFC3339, point.CheckedAt)
+		if at.Equal(latestAt) && point.Status != latestStatus {
+			return invalidModelSource(check, "AI INPUT 最新渠道探测记录相互冲突")
+		}
+	}
+	if latestStatus != selected.PrimaryStatus {
+		return invalidModelSource(check, "AI INPUT 当前渠道状态与最新探测记录不一致")
+	}
+	if !freshModelSourceTime(latestAt, now, 3*time.Minute) {
 		check.FailureCode = "source_stale"
-		check.Detail = targetModelName + " 状态超过 3 分钟未更新"
+		check.Detail = "AI INPUT 渠道状态超过 3 分钟未更新"
 		return check
 	}
-	if service.Last.LatencyMS > 0 {
-		check.LatencyMS = service.Last.LatencyMS
-	}
-	if *service.Last.OK {
+	switch latestStatus {
+	case "operational":
 		check.Status = model.Healthy
-		check.Detail = targetModelName + " 最近探测正常"
-		return check
+		check.Detail = source.Model + " 渠道探测正常"
+	case "degraded":
+		check.Status = model.Degraded
+		check.FailureCode = "reported_degradation"
+		check.Detail = source.Model + " 渠道探测降级"
+	case "error":
+		check.Status = model.Critical
+		check.FailureCode = "reported_outage"
+		check.Detail = source.Model + " 渠道探测报错"
+	default:
+		return invalidModelSource(check, "AI INPUT 返回不支持的渠道状态")
 	}
-	check.Status = model.Critical
-	check.FailureCode = "reported_outage"
-	check.Detail = targetModelName + " 最近探测失败"
+	if selected.PrimaryLatencyMS != nil && *selected.PrimaryLatencyMS > 0 {
+		check.LatencyMS = *selected.PrimaryLatencyMS
+	}
+	check.Detail += "；延迟为对话延迟，非端点 PING"
 	return check
 }
 
@@ -609,12 +644,94 @@ func (c *Collector) probeOpenAI(ctx context.Context, source ModelSource, check m
 }
 
 func (c *Collector) getModelSourceJSON(ctx context.Context, endpoint string, target any) error {
+	return c.getJSON(ctx, endpoint, target, "")
+}
+
+func (c *Collector) getAIInputChannelMonitors(ctx context.Context, endpoint string, now time.Time, target any) error {
+	c.aiInputAuthMu.Lock()
+	defer c.aiInputAuthMu.Unlock()
+	// Every INPUT row in one collection observes the same response, including
+	// failures. Do not log in or fetch once per model.
+	if !c.aiInputCacheAt.Equal(now) || c.aiInputCacheURL != endpoint {
+		c.aiInputCacheAt, c.aiInputCacheURL = now, endpoint
+		c.aiInputCache = nil
+		c.aiInputCacheErr = c.fetchAIInputChannelMonitors(ctx, endpoint, &c.aiInputCache)
+	}
+	if c.aiInputCacheErr != nil {
+		return c.aiInputCacheErr
+	}
+	return json.Unmarshal(c.aiInputCache, target)
+}
+
+// Called with aiInputAuthMu held.
+func (c *Collector) fetchAIInputChannelMonitors(ctx context.Context, endpoint string, target any) error {
+	for attempt := 0; attempt < 2; attempt++ {
+		token, err := c.getAIInputToken(ctx)
+		if err != nil {
+			return err
+		}
+		err = c.getJSON(ctx, endpoint, target, token)
+		var httpErr modelSourceHTTPError
+		if !errors.As(err, &httpErr) || httpErr.status != http.StatusUnauthorized {
+			return err
+		}
+		c.aiInputToken = ""
+		if attempt == 1 {
+			return err
+		}
+	}
+	return errors.New("AI INPUT authorization failed")
+}
+
+// Called with aiInputAuthMu held. Tokens stay in memory and never enter history.
+func (c *Collector) getAIInputToken(ctx context.Context) (string, error) {
+	if c.aiInputToken != "" && time.Now().Before(c.aiInputTokenExp) {
+		return c.aiInputToken, nil
+	}
+	loginURL := strings.TrimSpace(c.config.AIInputLoginURL)
+	if loginURL == "" {
+		loginURL = aiInputLoginURL
+	}
+	payload := struct {
+		Code *int `json:"code"`
+		Data struct {
+			AccessToken string `json:"access_token"`
+			ExpiresIn   int64  `json:"expires_in"`
+		} `json:"data"`
+	}{}
+	body := struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}{Email: c.config.AIInputEmail, Password: c.config.AIInputPassword}
+	if err := c.postJSON(ctx, loginURL, body, &payload); err != nil {
+		return "", err
+	}
+	if payload.Code == nil || *payload.Code != 0 || strings.TrimSpace(payload.Data.AccessToken) == "" || payload.Data.ExpiresIn <= 0 || payload.Data.ExpiresIn > 365*24*3600 {
+		return "", errors.New("AI INPUT 登录返回无效凭证")
+	}
+	ttl := time.Duration(payload.Data.ExpiresIn) * time.Second
+	if ttl > time.Minute {
+		ttl -= time.Minute
+	}
+	c.aiInputToken = payload.Data.AccessToken
+	c.aiInputTokenExp = time.Now().Add(ttl)
+	return c.aiInputToken, nil
+}
+
+func (c *Collector) getJSON(ctx context.Context, endpoint string, target any, bearerToken string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "status-cpa/1.0")
+	if bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+bearerToken)
+	}
+	return c.doModelSourceJSON(req, target)
+}
+
+func (c *Collector) doModelSourceJSON(req *http.Request, target any) error {
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return err
@@ -638,6 +755,21 @@ func (c *Collector) getModelSourceJSON(ctx context.Context, endpoint string, tar
 		return err
 	}
 	return nil
+}
+
+func (c *Collector) postJSON(ctx context.Context, endpoint string, input, target any) error {
+	body, err := json.Marshal(input)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "status-cpa/1.0")
+	return c.doModelSourceJSON(req, target)
 }
 
 func unreadableModelSource(check model.Check, name string, err error) model.Check {

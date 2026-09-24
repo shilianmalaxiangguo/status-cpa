@@ -24,21 +24,24 @@
     unknown: "未知",
   };
 
-  const providers = [
-    { id: "provider-ai-input", label: "AI INPUT", latencyLabel: "延迟" },
-    { id: "provider-pipio", label: "PIPIO", latencyLabel: "延迟", noLatency: "未提供" },
-    { id: "provider-krill", label: "KRILL", latencyLabel: "TTFT P99" },
-  ].flatMap((provider) => [
+  const modelTargets = [
     { model: "gpt-6-astra", suffix: "-astra" },
     { model: "gpt-5.6-sol", suffix: "" },
     { model: "gpt-5.6-terra", suffix: "-terra" },
-  ].map((target) => ({
-    ...provider,
-    id: provider.id + target.suffix,
-    providerID: provider.id,
-    model: target.model,
-    label: `${provider.label} · ${target.model}`,
-  })));
+  ];
+  const providers = [
+    ...[3, 2, 1].map((id) => ({
+      id: `provider-ai-input-channel-${id}`, providerID: "provider-ai-input",
+      label: `AI INPUT · CodeX 余额-${id}`, model: "gpt-5.6-sol", latencyLabel: "对话延迟",
+    })),
+    ...[
+      { id: "provider-pipio", label: "PIPIO", latencyLabel: "延迟", noLatency: "未提供" },
+      { id: "provider-krill", label: "KRILL", latencyLabel: "TTFT P99" },
+    ].flatMap((provider) => modelTargets.map((target) => ({
+      ...provider, id: provider.id + target.suffix, providerID: provider.id,
+      model: target.model, label: `${provider.label} · ${target.model}`,
+    }))),
+  ];
 
   const demo = new URLSearchParams(window.location.search).get("demo");
 
