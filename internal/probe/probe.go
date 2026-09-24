@@ -87,7 +87,11 @@ func (c *Collector) Collect(ctx context.Context, now time.Time, next time.Time) 
 	quicCh := make(chan model.Check, 1)
 	http2Ch := make(chan model.Check, 1)
 	endpointCh := make(chan model.Check, len(c.config.Endpoints))
-	modelSourceCh := make(chan model.Check, len(c.config.ModelSources))
+	type modelSourceResult struct {
+		index int
+		check model.Check
+	}
+	modelSourceCh := make(chan modelSourceResult, len(c.config.ModelSources))
 
 	go func() { connectorCh <- c.collectConnector(ctx) }()
 	go func() { quicCh <- c.probeQUIC(ctx) }()
@@ -96,9 +100,9 @@ func (c *Collector) Collect(ctx context.Context, now time.Time, next time.Time) 
 		endpoint := endpoint
 		go func() { endpointCh <- c.probeEndpoint(ctx, endpoint) }()
 	}
-	for _, source := range c.config.ModelSources {
-		source := source
-		go func() { modelSourceCh <- c.probeModelSource(ctx, source, now) }()
+	for index, source := range c.config.ModelSources {
+		index, source := index, source
+		go func() { modelSourceCh <- modelSourceResult{index: index, check: c.probeModelSource(ctx, source, now)} }()
 	}
 
 	connector := <-connectorCh
@@ -106,9 +110,10 @@ func (c *Collector) Collect(ctx context.Context, now time.Time, next time.Time) 
 	for range c.config.Endpoints {
 		networkChecks = append(networkChecks, <-endpointCh)
 	}
-	modelSourceChecks := make([]model.Check, 0, len(c.config.ModelSources))
+	modelSourceChecks := make([]model.Check, len(c.config.ModelSources))
 	for range c.config.ModelSources {
-		modelSourceChecks = append(modelSourceChecks, <-modelSourceCh)
+		result := <-modelSourceCh
+		modelSourceChecks[result.index] = result.check
 	}
 	return buildSnapshot(now, next, connector, networkChecks, modelSourceChecks)
 }

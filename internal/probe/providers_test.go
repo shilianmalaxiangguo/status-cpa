@@ -220,6 +220,87 @@ func TestProbeModelSources(t *testing.T) {
 	}
 }
 
+func TestThreeModelsRemainIndependent(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 9, 23, 6, 30, 0, 0, time.UTC)
+	models := []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra"}
+	tests := []struct {
+		name      string
+		kind      ModelSourceKind
+		body      string
+		statuses  []model.Status
+		latencies []float64
+	}{
+		{
+			name: "INPUT",
+			kind: ModelSourceAIInput,
+			body: fmt.Sprintf(`{"generated_at":%d,"services":[
+				{"model":"gpt-5.6-terra","last":{"ts":%d,"ok":true,"latency_ms":303}},
+				{"model":"gpt-6-astra","last":{"ts":%d,"ok":false,"latency_ms":null}},
+				{"model":"gpt-5.6-sol","last":{"ts":%d,"ok":true,"latency_ms":202}},
+				{"model":"gpt-6-sol","last":{"ts":%d,"ok":false}}
+			]}`, now.Unix(), now.Unix(), now.Unix(), now.Unix(), now.Unix()),
+			statuses:  []model.Status{model.Critical, model.Healthy, model.Healthy},
+			latencies: []float64{0, 202, 303},
+		},
+		{
+			name: "PIPIO",
+			kind: ModelSourcePIPIO,
+			body: `{"success":true,"data":[{"monitors":[
+				{"name":"gpt-5.6-terra","status":0,"heartbeats":[1,0]},
+				{"name":"gpt-6-astra","status":1,"heartbeats":[0,1]},
+				{"name":"gpt-5.6-sol","status":2,"heartbeats":[1,2]},
+				{"name":"gpt-6-sol","status":0,"heartbeats":[0]}
+			]}]}`,
+			statuses:  []model.Status{model.Healthy, model.Degraded, model.Critical},
+			latencies: []float64{0, 0, 0},
+		},
+		{
+			name: "KRILL",
+			kind: ModelSourceKrill,
+			body: `{"success":true,"code":0,"data":{"channels":[
+				{"channel_key":"openai_gpt_5_6_terra","model_name":"gpt-5.6-terra","current_status":1,"history":[{"s":1,"ts":"2026-09-23 06:29:00"},{"s":0,"ts":"2026-09-23 06:28:00"}]},
+				{"channel_key":"openai_gpt_6_astra","model_name":"gpt-6-astra","current_status":2,"history":[{"s":2,"ts":"2026-09-23 06:29:00"}]},
+				{"channel_key":"openai_gpt_5_6_sol","model_name":"gpt-5.6-sol","current_status":0,"history":[{"s":0,"ts":"2026-09-23 06:29:00"}]},
+				{"channel_key":"openai_gpt_6_sol","model_name":"gpt-6-sol","current_status":1,"history":[{"s":1,"ts":"2026-09-23 06:29:00"}]}
+			],"perf":[
+				{"channel_key":"openai_gpt_5_6_sol","ttft_p99_ms":222},
+				{"channel_key":"openai_gpt_5_6_terra","ttft_p99_ms":333},
+				{"channel_key":"openai_gpt_6_astra","ttft_p99_ms":111}
+			]}}`,
+			statuses:  []model.Status{model.Degraded, model.Critical, model.Healthy},
+			latencies: []float64{111, 222, 333},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for i, target := range models {
+				t.Run(target, func(t *testing.T) {
+					server := newJSONServer(test.body, "")
+					defer server.Close()
+					collector := New(Config{Timeout: time.Second})
+					check := collector.probeModelSource(context.Background(), ModelSource{
+						ID: "test-" + target, Name: test.name, Model: target, URL: server.URL, Kind: test.kind,
+					}, now)
+					if check.Status != test.statuses[i] || check.LatencyMS != test.latencies[i] || !strings.Contains(check.Detail, target) || check.ID != "test-"+target {
+						t.Fatalf("model identity, status or latency leaked: %+v", check)
+					}
+
+					// Other healthy models must not substitute for a missing target.
+					missing := newJSONServer(strings.ReplaceAll(test.body, target, "different-model"), "")
+					defer missing.Close()
+					check = collector.probeModelSource(context.Background(), ModelSource{
+						Model: target, URL: missing.URL, Kind: test.kind,
+					}, now)
+					if check.Status != model.Unknown || check.FailureCode != "source_invalid" {
+						t.Fatalf("missing %s must remain unknown: %+v", target, check)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestProbeJiMuAIDiscoversMonitorID(t *testing.T) {
 	t.Parallel()
 

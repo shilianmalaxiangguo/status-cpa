@@ -26,12 +26,19 @@
 
   const providers = [
     { id: "provider-ai-input", label: "AI INPUT", latencyLabel: "延迟" },
-    { id: "provider-ciii", label: "CIII", latencyLabel: "延迟" },
     { id: "provider-pipio", label: "PIPIO", latencyLabel: "延迟", noLatency: "未提供" },
     { id: "provider-krill", label: "KRILL", latencyLabel: "TTFT P99" },
-    { id: "provider-jimu-ai", label: "JiMu-Ai", latencyLabel: "延迟" },
-    { id: "provider-openai-conversations", label: "OPENAI Conversations", latencyLabel: "延迟", noLatency: "不适用" },
-  ];
+  ].flatMap((provider) => [
+    { model: "gpt-6-astra", suffix: "-astra" },
+    { model: "gpt-5.6-sol", suffix: "" },
+    { model: "gpt-5.6-terra", suffix: "-terra" },
+  ].map((target) => ({
+    ...provider,
+    id: provider.id + target.suffix,
+    providerID: provider.id,
+    model: target.model,
+    label: `${provider.label} · ${target.model}`,
+  })));
 
   const demo = new URLSearchParams(window.location.search).get("demo");
 
@@ -612,12 +619,15 @@
       { id: "local-panel", name: "CPA Manager Plus 本机", protocol: "origin", status: "healthy", latencyMs: 2, detail: "HTTP 200，路径可达" },
       { id: "public-api", name: "API 公网入口", protocol: "http2", status: kind === "critical" ? "critical" : "healthy", latencyMs: 780, detail: kind === "critical" ? "timeout" : "HTTP 200，路径可达" },
       { id: "public-panel", name: "面板公网入口", protocol: "http2", status: kind === "critical" ? "critical" : "healthy", latencyMs: 590, detail: kind === "critical" ? "HTTP 1033" : "HTTP 302，Access 保护生效" },
-      { id: "provider-ai-input", name: "AI INPUT", protocol: "model", status: aiInputStatus, latencyMs: aiInputStatus === "healthy" ? 2820 : 0, detail: aiInputStatus === "healthy" ? "gpt-5.6-sol 最近探测正常" : "gpt-5.6-sol 最近探测失败" },
-      { id: "provider-ciii", name: "CIII", protocol: "model", status: "healthy", latencyMs: 3002, detail: "gpt-5.6-sol 最近探测正常" },
-      { id: "provider-pipio", name: "PIPIO", protocol: "model", status: "healthy", latencyMs: 0, detail: "gpt-5.6-sol 发布状态正常；未提供模型延迟和更新时间" },
-      { id: "provider-krill", name: "KRILL", protocol: "model", status: krillStatus, latencyMs: 447, detail: `gpt-5.6-sol 发布状态${krillStatus === "healthy" ? "正常" : "降级"}；延迟为 TTFT P99` },
-      { id: "provider-jimu-ai", name: "JiMu-Ai", protocol: "model", status: "healthy", latencyMs: 42, detail: "gpt-5.5 最近探测正常" },
-      { id: "provider-openai-conversations", name: "OPENAI", protocol: "model", status: "healthy", latencyMs: 0, detail: "Conversations 官方聚合状态正常；非 gpt-5.6-sol 单模型探测" },
+      ...providers.map((provider) => {
+        const status = provider.providerID === "provider-ai-input" ? aiInputStatus
+          : provider.providerID === "provider-krill" ? krillStatus : "healthy";
+        return {
+          id: provider.id, name: provider.label, protocol: "model", status,
+          latencyMs: status === "healthy" && !provider.noLatency ? (provider.providerID === "provider-krill" ? 447 : 2820) : 0,
+          detail: `${provider.model} ${labels[status]}`,
+        };
+      }),
     ];
     const summary = kind === "healthy" ? "自动模式当前选择 QUIC，HTTP/2 备用路径正常" : kind === "critical" ? "公网入口无法找到健康 Tunnel connector" : "HTTP/2 生产隧道正常，QUIC 备用路径出现降级";
     const history = Array.from({ length: 60 }, (_, index) => {
@@ -636,15 +646,15 @@
         },
         checks: checks.map((check) => {
           const status = affected && check.id === "quic-edge" ? quicStatus
-            : affected && kind === "critical" && (check.id.startsWith("public-") || check.id === "provider-ai-input") ? "critical"
-              : affected && kind === "degraded" && check.id === "provider-krill" ? "degraded"
+            : affected && kind === "critical" && (check.id.startsWith("public-") || check.id.startsWith("provider-ai-input")) ? "critical"
+              : affected && kind === "degraded" && check.id.startsWith("provider-krill") ? "degraded"
                 : "healthy";
           if (status !== "healthy") return { ...check, status };
           if (check.id === "quic-edge") return { ...check, status, latencyMs: 181, detail: "真实 QUIC/TLS 握手成功；未注册 connector" };
           if (check.id === "public-api") return { ...check, status, latencyMs: 780, detail: "HTTP 200，路径可达" };
           if (check.id === "public-panel") return { ...check, status, latencyMs: 590, detail: "HTTP 302，Access 保护生效" };
-          if (check.id === "provider-ai-input") return { ...check, status, latencyMs: 2820, detail: "gpt-5.6-sol 最近探测正常" };
-          if (check.id === "provider-krill") return { ...check, status, latencyMs: 447, detail: "gpt-5.6-sol 发布状态正常；延迟为 TTFT P99" };
+          const provider = providers.find((item) => item.id === check.id);
+          if (provider) return { ...check, status, latencyMs: provider.noLatency ? 0 : provider.providerID === "provider-krill" ? 447 : 2820, detail: `${provider.model} 最近探测正常` };
           return { ...check, status };
         }),
       };

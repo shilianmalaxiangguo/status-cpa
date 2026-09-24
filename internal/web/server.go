@@ -18,9 +18,8 @@ import (
 var staticFiles embed.FS
 
 const (
-	statusWindow                   = 60 * time.Minute
-	statusBuckets                  = 60
-	obsoleteOpenAIResponsesCheckID = "provider-openai-responses"
+	statusWindow  = 60 * time.Minute
+	statusBuckets = 60
 )
 
 type Server struct {
@@ -201,7 +200,7 @@ func withoutObsoleteChecks(snapshots []model.Snapshot) []model.Snapshot {
 	for i, snapshot := range snapshots {
 		hasObsolete := false
 		for _, check := range snapshot.Checks {
-			if check.ID == obsoleteOpenAIResponsesCheckID {
+			if obsoleteProvider(check.ID) {
 				hasObsolete = true
 				break
 			}
@@ -211,13 +210,22 @@ func withoutObsoleteChecks(snapshots []model.Snapshot) []model.Snapshot {
 		}
 		checks := make([]model.Check, 0, len(snapshot.Checks)-1)
 		for _, check := range snapshot.Checks {
-			if check.ID != obsoleteOpenAIResponsesCheckID {
+			if !obsoleteProvider(check.ID) {
 				checks = append(checks, check)
 			}
 		}
 		filtered[i].Checks = checks
 	}
 	return filtered
+}
+
+func obsoleteProvider(id string) bool {
+	switch id {
+	case "provider-ciii", "provider-jimu-ai", "provider-openai-responses", "provider-openai-conversations":
+		return true
+	default:
+		return false
+	}
 }
 
 func mergeWorst(bucket *model.Snapshot, candidate model.Snapshot) {

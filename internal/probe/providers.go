@@ -40,6 +40,7 @@ const (
 type ModelSource struct {
 	ID          string
 	Name        string
+	Model       string
 	URL         string
 	MetadataURL string
 	Kind        ModelSourceKind
@@ -54,13 +55,16 @@ func (e modelSourceHTTPError) Error() string {
 }
 
 func (c *Collector) probeModelSource(ctx context.Context, source ModelSource, now time.Time) model.Check {
+	if source.Model == "" {
+		source.Model = targetModelName
+	}
 	check := model.Check{
 		ID:       source.ID,
 		Name:     source.Name,
 		Protocol: "model",
 		Target:   source.URL,
 		Status:   model.Unknown,
-		Detail:   targetModelName + " 状态尚未读取",
+		Detail:   source.Model + " 状态尚未读取",
 	}
 
 	switch source.Kind {
@@ -84,6 +88,7 @@ func (c *Collector) probeModelSource(ctx context.Context, source ModelSource, no
 }
 
 func (c *Collector) probeAIInput(ctx context.Context, source ModelSource, now time.Time, check model.Check) model.Check {
+	targetModelName := source.Model
 	payload := struct {
 		GeneratedAt int64 `json:"generated_at"`
 		Services    []struct {
@@ -141,6 +146,7 @@ func (c *Collector) probeAIInput(ctx context.Context, source ModelSource, now ti
 }
 
 func (c *Collector) probePIPIO(ctx context.Context, source ModelSource, check model.Check) model.Check {
+	targetModelName := source.Model
 	payload := struct {
 		Success bool `json:"success"`
 		Data    []struct {
@@ -205,6 +211,7 @@ func (c *Collector) probePIPIO(ctx context.Context, source ModelSource, check mo
 }
 
 func (c *Collector) probeKrill(ctx context.Context, source ModelSource, now time.Time, check model.Check) model.Check {
+	targetModelName := source.Model
 	payload := struct {
 		Success bool `json:"success"`
 		Code    int  `json:"code"`
@@ -231,7 +238,17 @@ func (c *Collector) probeKrill(ctx context.Context, source ModelSource, now time
 		return invalidModelSource(check, "KRILL 状态源未返回成功")
 	}
 
-	const targetChannelKey = "openai_gpt_5_6_sol"
+	var targetChannelKey string
+	switch targetModelName {
+	case "gpt-6-astra":
+		targetChannelKey = "openai_gpt_6_astra"
+	case "gpt-5.6-sol":
+		targetChannelKey = "openai_gpt_5_6_sol"
+	case "gpt-5.6-terra":
+		targetChannelKey = "openai_gpt_5_6_terra"
+	default:
+		return invalidModelSource(check, "KRILL 未配置 "+targetModelName+" 渠道")
+	}
 	var channel *struct {
 		ChannelKey   string `json:"channel_key"`
 		ModelName    string `json:"model_name"`

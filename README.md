@@ -5,7 +5,8 @@ connector. It reports cloudflared's configured transport mode and active
 protocol while independently checking both HTTP/2 and QUIC paths to the edge.
 
 The UI opens directly on HTTP/2 and QUIC health, followed by upstream model
-health for AI INPUT, CIII, PIPIO, KRILL, JiMu-Ai, and OPENAI. Each row shows its current state,
+health for AI INPUT, PIPIO, and KRILL, in that order. Each provider has separate
+rows for `gpt-6-astra`, `gpt-5.6-sol`, and `gpt-5.6-terra`. Each row shows its current state,
 available latency signal, and one-minute history for the latest 60 minutes. Hover,
 tap, or use the keyboard on a minute to inspect its status and probe detail. The
 page defaults to a dark theme and retains an explicit light/dark choice. Service
@@ -23,13 +24,15 @@ database server, or a package manager on the target host.
   closed immediately; no stream is opened and no Tunnel connector is registered.
 - Local CPA (`8317`) and CPA Manager Plus (`18317`) endpoints.
 - Public API and panel routes without following redirects.
-- Exact `gpt-5.6-sol` status published by AI INPUT, CIII, PIPIO, and KRILL.
-  JiMu-Ai uses its published `gpt-5.5` probe because it does not currently expose
-  a `gpt-5.6-sol` health monitor. Missing, stale, ambiguous, or unreadable model
-  data is always reported as unknown.
-- OpenAI's official `Conversations` component from the ChatGPT group. OpenAI does
-  not publish a `gpt-5.6-sol` component, so this row is explicitly labeled as
-  aggregate and does not claim model-level latency.
+- Exact `gpt-6-astra`, `gpt-5.6-sol`, and `gpt-5.6-terra` status published by
+  AI INPUT, PIPIO, and KRILL. KRILL uses `https://www.krill-code.com/status`.
+  Missing, stale, ambiguous, or unreadable model data is reported as unknown.
+  PIPIO does not publish latency or probe timestamps; its row uses the reported
+  current state. KRILL latency is the source's 24-hour TTFT P99.
+- All model timelines use our own one-minute observations for the latest 60 minutes,
+  not the source website's historical buckets. Existing sol history IDs are
+  preserved; astra and terra start with their own observations. Retired providers
+  are excluded from the API and incidents, without deleting stored history.
 
 The QUIC check follows the probe behavior added to cloudflared 2026.7.x. A UDP
 socket or `nc -u` alone is not treated as success.

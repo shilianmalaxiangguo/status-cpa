@@ -59,26 +59,7 @@ func run() error {
 			{ID: "public-api", Name: "API 公网入口", URL: "https://api.longxiachaogu.com/", ExpectedStatus: []int{http.StatusOK}, Protocol: "http2"},
 			{ID: "public-panel", Name: "面板公网入口", URL: "https://cpa.longxiachaogu.com/management.html", ExpectedStatus: []int{http.StatusFound}, Protocol: "http2"},
 		},
-		ModelSources: []probe.ModelSource{
-			{ID: "provider-ai-input", Name: "AI INPUT", URL: "https://status.input.im/api/status", Kind: probe.ModelSourceAIInput},
-			{
-				ID:          "provider-ciii",
-				Name:        "CIII",
-				URL:         "https://status.ciii.club/api/status-page/heartbeat/codex",
-				MetadataURL: "https://status.ciii.club/api/status-page/codex",
-				Kind:        probe.ModelSourceCIII,
-			},
-			{ID: "provider-pipio", Name: "PIPIO", URL: "https://pipio.io/api/uptime/status", Kind: probe.ModelSourcePIPIO},
-			{ID: "provider-krill", Name: "KRILL", URL: "https://www.krill-ai.net/api/public/channel-status?hours=24", Kind: probe.ModelSourceKrill},
-			{
-				ID:          "provider-jimu-ai",
-				Name:        "JiMu-Ai",
-				URL:         "https://status.yiqiu.dev/api/status-page/heartbeat/ai",
-				MetadataURL: "https://status.yiqiu.dev/api/status-page/ai",
-				Kind:        probe.ModelSourceJiMuAI,
-			},
-			{ID: "provider-openai-conversations", Name: "OPENAI", URL: "https://status.openai.com/api/v2/components.json", Kind: probe.ModelSourceOpenAI},
-		},
+		ModelSources: defaultModelSources(),
 	})
 
 	rootCtx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -125,6 +106,30 @@ func run() error {
 		}
 		return err
 	}
+}
+
+func defaultModelSources() []probe.ModelSource {
+	providers := []probe.ModelSource{
+		{ID: "provider-ai-input", Name: "AI INPUT", URL: "https://status.input.im/api/status", Kind: probe.ModelSourceAIInput},
+		{ID: "provider-pipio", Name: "PIPIO", URL: "https://pipio.io/api/uptime/status", Kind: probe.ModelSourcePIPIO},
+		{ID: "provider-krill", Name: "KRILL", URL: "https://www.krill-code.com/api/public/channel-status?hours=24", Kind: probe.ModelSourceKrill},
+	}
+	models := []struct{ name, suffix string }{
+		{"gpt-6-astra", "-astra"},
+		{"gpt-5.6-sol", ""}, // Preserve the existing sol history IDs.
+		{"gpt-5.6-terra", "-terra"},
+	}
+	sources := make([]probe.ModelSource, 0, len(providers)*len(models))
+	for _, provider := range providers {
+		for _, target := range models {
+			source := provider
+			source.ID += target.suffix
+			source.Name += " · " + target.name
+			source.Model = target.name
+			sources = append(sources, source)
+		}
+	}
+	return sources
 }
 
 func collectLoop(ctx context.Context, store *history.Store, collector *probe.Collector, interval time.Duration) {

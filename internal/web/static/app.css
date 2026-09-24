@@ -407,49 +407,88 @@ a {
   box-shadow: inset 3px 0 0 var(--green);
 }
 
-/* Provider rows keep the full timeline while giving the live metrics more room. */
-#provider-list .protocol-row {
-  grid-template-columns: minmax(240px, 1fr) minmax(260px, auto) auto;
+.provider-group {
+  padding-block: 20px;
+  border-block-end: 1px solid var(--line);
+}
+
+.provider-group:first-child {
+  padding-block-start: 0;
+}
+
+.provider-group-heading {
+  margin-block-end: 16px;
+}
+
+.provider-group-title h3 {
+  margin: 0;
+  color: var(--secondary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.provider-model-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 32px;
+}
+
+#provider-list .provider-model-card {
+  grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
-    "primary metrics status"
-    "track track track";
-  gap: var(--space-1) var(--space-5);
-  min-height: 96px;
-  padding: var(--space-2) var(--space-4);
+    "primary status"
+    "track track"
+    "axis axis"
+    "metrics metrics";
+  gap: 0 12px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 0 16px;
+  border: 0;
 }
 
-#provider-list .protocol-primary {
-  gap: var(--space-2);
+#provider-list .protocol-title-line h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
 }
 
-#provider-list .protocol-badge {
-  flex-basis: 32px;
-  width: 32px;
-  height: 32px;
-  font-size: 10px;
-}
-
-#provider-list .role-tag {
-  padding: 1px 5px;
-  font-size: 9px;
-  line-height: 12px;
-}
-
-#provider-list .protocol-title-line h3 {
-  line-height: 18px;
-}
-
-#provider-list .protocol-metrics {
-  gap: var(--space-4);
-}
-
-#provider-list .protocol-metrics span {
+.provider-time-axis {
+  grid-area: axis;
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
   font-size: 10px;
   line-height: 14px;
 }
 
+#provider-list .status-track {
+  margin-block-end: -8px;
+}
+
+#provider-list .protocol-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin-block-start: 8px;
+}
+
+#provider-list .protocol-metrics div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+#provider-list .protocol-metrics span {
+  font-size: 12px;
+  line-height: 16px;
+}
+
 #provider-list .protocol-metrics strong {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
 }
 
@@ -465,7 +504,7 @@ a {
 }
 
 #provider-list .track-segment {
-  height: 20px;
+  height: 24px;
 }
 
 .protocol-primary {
@@ -1195,41 +1234,6 @@ a {
     grid-column: 2;
     justify-self: start;
   }
-
-  #provider-list .protocol-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "primary status"
-      "metrics metrics"
-      "track track";
-    gap: var(--space-1) var(--space-3);
-    min-height: 116px;
-    padding: var(--space-2) var(--space-4);
-  }
-
-  #provider-list .protocol-metrics {
-    gap: var(--space-3);
-  }
-
-  #provider-list .protocol-metrics div {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-1);
-  }
-
-  #provider-list .protocol-metrics span,
-  #provider-list .protocol-metrics strong {
-    display: inline;
-    line-height: 16px;
-  }
-
-  #provider-list .protocol-metrics span {
-    white-space: nowrap;
-  }
-
-  #provider-list .protocol-metrics strong {
-    flex: 0 0 auto;
-  }
 }
 
 @media (max-width: 460px) {
@@ -1268,10 +1272,6 @@ a {
       "metrics metrics"
       "track track";
     padding: var(--space-4);
-  }
-
-  #provider-list .protocol-row {
-    padding: var(--space-2) var(--space-4);
   }
 
   .row-status {
@@ -1334,28 +1334,11 @@ a {
   .track-legend {
     min-height: 28px;
   }
-
-  #provider-list .protocol-row {
-    grid-template-columns: minmax(0, 1fr) minmax(180px, auto) auto;
-    grid-template-areas:
-      "primary metrics status"
-      "track track track";
-    gap: var(--space-1) var(--space-4);
-    min-height: 96px;
-    padding: var(--space-2) var(--space-4);
-  }
 }
 
-@media (orientation: landscape) and (max-height: 500px) and (max-width: 560px) {
-  #provider-list .protocol-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "primary status"
-      "metrics metrics"
-      "track track";
-    gap: var(--space-1) var(--space-3);
-    min-height: 116px;
-    padding: var(--space-2) var(--space-4);
+@media (max-width: 767px), (orientation: landscape) and (max-height: 500px) {
+  .provider-model-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

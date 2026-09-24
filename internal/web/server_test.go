@@ -102,34 +102,37 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	indexRecorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(indexRecorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	index := indexRecorder.Body.String()
-	for _, expected := range []string{`data-theme="dark"`, `name="theme-color" content="#000000"`, `id="theme-toggle"`, `id="track-tooltip"`, `role="slider"`, `id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `id="provider-ciii-row"`, `id="provider-jimu-ai-row"`, `id="provider-openai-conversations-row"`, `JiMu-Ai`, `<span class="role-tag">gpt-5.5</span>`, `评判目标 · 按渠道标注`, `Conversations 聚合`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=` + cssVersion, `/assets/app.js?v=` + jsVersion} {
+	for _, expected := range []string{`data-theme="dark"`, `name="theme-color" content="#000000"`, `id="theme-toggle"`, `id="track-tooltip"`, `role="slider"`, `id="tunnel-state"`, `id="provider-list"`, `id="provider-live-status"`, `每分钟采集 · 近 60 分钟`, `近 60 分钟可用率`, `60 分钟前`, `/assets/app.css?v=` + cssVersion, `/assets/app.js?v=` + jsVersion} {
 		if !strings.Contains(index, expected) {
 			t.Fatalf("expected index to contain %q", expected)
 		}
 	}
-	if strings.Contains(index, `评判模型 · gpt-5.6-sol`) {
-		t.Fatal("expected mixed provider targets not to be labeled uniformly as gpt-5.6-sol")
-	}
-	for _, obsolete := range []string{"provider-openai-responses", "OPENAI Responses", "Responses 聚合", "Responses 官方"} {
-		if strings.Contains(index, obsolete) || strings.Contains(string(js), obsolete) || strings.Contains(string(css), obsolete) {
-			t.Fatalf("expected Conversations migration to remove %q", obsolete)
+	for _, obsolete := range []string{"provider-ciii", "provider-jimu-ai", "provider-openai", "JiMu-Ai", "Conversations 聚合"} {
+		if strings.Contains(index, obsolete) || strings.Contains(string(js), obsolete) {
+			t.Fatalf("expected retired provider %q to be absent", obsolete)
 		}
 	}
 	previousProvider := -1
-	for _, id := range []string{"provider-ai-input-row", "provider-ciii-row", "provider-pipio-row", "provider-krill-row", "provider-jimu-ai-row", "provider-openai-conversations-row"} {
-		position := strings.Index(index, `id="`+id+`"`)
-		if position <= previousProvider {
-			t.Fatalf("expected provider %s after the previous provider", id)
+	for _, provider := range []string{"provider-ai-input", "provider-pipio", "provider-krill"} {
+		for _, suffix := range []string{"-astra", "", "-terra"} {
+			id := provider + suffix
+			position := strings.Index(index, `id="`+id+`-row"`)
+			if position <= previousProvider {
+				t.Fatalf("expected model row %s after the previous row", id)
+			}
+			previousProvider = position
+			if !strings.Contains(index, `<p class="sr-only" id="`+id+`-detail">`) {
+				t.Fatalf("expected model row %s detail to be visually hidden", id)
+			}
 		}
-		previousProvider = position
 	}
-	for _, id := range []string{"provider-ai-input", "provider-ciii", "provider-pipio", "provider-krill", "provider-jimu-ai", "provider-openai-conversations"} {
-		if !strings.Contains(index, `<p class="sr-only" id="`+id+`-detail">`) {
-			t.Fatalf("expected provider %s detail to be visually hidden", id)
+	for _, target := range []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra"} {
+		if strings.Count(index, `<h4>`+target+`</h4>`) != 3 {
+			t.Fatalf("expected %s exactly once per provider", target)
 		}
 	}
-	if count := strings.Count(index, `<span>可用率</span>`); count != 6 {
-		t.Fatalf("expected six compact provider availability labels, got %d", count)
+	if count := strings.Count(index, `<span>可用率</span>`); count != 9 {
+		t.Fatalf("expected nine independent model availability labels, got %d", count)
 	}
 	if strings.Contains(index, `data-range=`) {
 		t.Fatal("expected historical range switch to be removed")
@@ -145,7 +148,7 @@ func TestStatusAPIAndSecurityHeaders(t *testing.T) {
 	}
 }
 
-func TestStatusAPIFiltersObsoleteOpenAIResponsesHistory(t *testing.T) {
+func TestStatusAPIFiltersRetiredProviderHistory(t *testing.T) {
 	t.Parallel()
 
 	store, err := history.New(filepath.Join(t.TempDir(), "history.jsonl"), 24*time.Hour)
@@ -189,16 +192,16 @@ func TestStatusAPIFiltersObsoleteOpenAIResponsesHistory(t *testing.T) {
 	if hasCheck(response.Current.Checks, "provider-openai-responses") {
 		t.Fatalf("expected obsolete OpenAI check to be removed from current snapshot, got %+v", response.Current.Checks)
 	}
-	if checkStatus(response.Current.Checks, "provider-openai-conversations") != model.Healthy {
-		t.Fatalf("expected current Conversations status to remain healthy, got %+v", response.Current.Checks)
+	if len(response.Current.Checks) != 0 {
+		t.Fatalf("expected retired provider checks to be removed from current snapshot, got %+v", response.Current.Checks)
 	}
 	for _, snapshot := range response.History {
 		if hasCheck(snapshot.Checks, "provider-openai-responses") {
 			t.Fatalf("expected obsolete OpenAI check to be removed from history, got %+v", snapshot.Checks)
 		}
 	}
-	if checkStatus(response.History[len(response.History)-1].Checks, "provider-openai-conversations") != model.Healthy {
-		t.Fatalf("expected latest Conversations status in the rightmost bucket, got %+v", response.History[len(response.History)-1])
+	if len(response.History[len(response.History)-1].Checks) != 0 {
+		t.Fatalf("expected retired provider checks in history to be removed, got %+v", response.History[len(response.History)-1])
 	}
 	for _, incident := range response.Incidents {
 		if incident.CheckID == "provider-openai-responses" {
@@ -207,6 +210,28 @@ func TestStatusAPIFiltersObsoleteOpenAIResponsesHistory(t *testing.T) {
 	}
 	if strings.Contains(recorder.Body.String(), "Responses 官方") {
 		t.Fatalf("expected obsolete Responses detail to be absent, got %s", recorder.Body.String())
+	}
+}
+
+func TestRetiredFilterPreservesStoredAndActiveModels(t *testing.T) {
+	ids := []string{"provider-ciii", "provider-jimu-ai", "provider-openai-responses", "provider-openai-conversations", "provider-ai-input", "provider-ai-input-astra", "provider-ai-input-terra", "provider-pipio", "provider-krill", "local-api"}
+	snapshot := model.Snapshot{Timestamp: time.Now(), Overall: model.Healthy}
+	for _, id := range ids {
+		snapshot.Checks = append(snapshot.Checks, model.Check{ID: id, Status: model.Critical})
+	}
+	filtered := withoutObsoleteChecks([]model.Snapshot{snapshot})
+	if len(snapshot.Checks) != len(ids) || len(filtered[0].Checks) != len(ids)-4 {
+		t.Fatalf("filter must preserve stored snapshot and all active models: %+v", filtered)
+	}
+	for _, id := range ids[:4] {
+		if hasCheck(filtered[0].Checks, id) {
+			t.Fatalf("retired check survived: %s", id)
+		}
+	}
+	for _, id := range ids[4:] {
+		if !hasCheck(filtered[0].Checks, id) {
+			t.Fatalf("active check lost: %s", id)
+		}
 	}
 }
 
